@@ -1,26 +1,27 @@
 import { space } from "@silverbulletmd/silverbullet/syscalls";
 import { fromArrayBuffer } from "geotiff";
 import {
+	buildSampledTileCacheEntry,
+	buildTileSampleCacheKey,
+	getMemoryCachedTile,
+	getPersistentCachedTile,
+	putCachedTile,
+} from "./cache.ts";
+import {
 	COPERNICUS_HTTP_ROOT,
 	COPERNICUS_RESOLUTION_ARC_SECONDS,
 	MAX_TILE_SAMPLE_SIZE,
 	TILE_FETCH_TIMEOUT_MS,
 } from "./constants.ts";
 import { clamp, intersectBounds } from "./math.ts";
-import type { GeoBounds, TileIndex } from "./types.ts";
+import type { GeoBounds, SampledTile, TileIndex } from "./types.ts";
 
 type SampleDensity = {
 	lat: number;
 	lon: number;
 };
 
-type LoadedTile = {
-	bounds: GeoBounds;
-	width: number;
-	height: number;
-	values: Float32Array;
-	noDataValue: number | null;
-};
+type LoadedTile = SampledTile;
 
 function padDegrees(value: number, width: number): string {
 	return Math.abs(value).toString().padStart(width, "0");
@@ -146,6 +147,28 @@ export async function loadTile(
 		return null;
 	}
 
+	const width = clamp(
+		Math.ceil((overlap.maxLon - overlap.minLon) * density.lon) + 2,
+		16,
+		MAX_TILE_SAMPLE_SIZE,
+	);
+	const height = clamp(
+		Math.ceil((overlap.maxLat - overlap.minLat) * density.lat) + 2,
+		16,
+		MAX_TILE_SAMPLE_SIZE,
+	);
+	const id = tileId(tile);
+	const cacheKey = buildTileSampleCacheKey(id, overlap, width, height);
+	const memoryCachedTile = getMemoryCachedTile(cacheKey);
+	if (memoryCachedTile) {
+		return memoryCachedTile;
+	}
+
+	const persistentCachedTile = await getPersistentCachedTile(cacheKey);
+	if (persistentCachedTile) {
+		return persistentCachedTile;
+	}
+
 	const arrayBuffer = await fetchArrayBuffer(tileUrl(tile));
 	const tiff = await fromArrayBuffer(arrayBuffer);
 	const image = await tiff.getImage();
@@ -163,17 +186,6 @@ export async function loadTile(
 		image.getHeight(),
 	);
 
-	const width = clamp(
-		Math.ceil((imageOverlap.maxLon - imageOverlap.minLon) * density.lon) + 2,
-		16,
-		MAX_TILE_SAMPLE_SIZE,
-	);
-	const height = clamp(
-		Math.ceil((imageOverlap.maxLat - imageOverlap.minLat) * density.lat) + 2,
-		16,
-		MAX_TILE_SAMPLE_SIZE,
-	);
-
 	const raster = (await image.readRasters({
 		window: rasterWindow,
 		width,
@@ -183,13 +195,17 @@ export async function loadTile(
 		resampleMethod: "bilinear",
 	})) as Float32Array;
 
-	return {
+	const loadedTile: LoadedTile = {
 		bounds: imageOverlap,
 		width,
 		height,
 		values: raster,
 		noDataValue: image.getGDALNoData(),
 	};
+	const cacheEntry = buildSampledTileCacheEntry(cacheKey, id);
+	await putCachedTile(cacheEntry.key, cacheEntry.path, loadedTile);
+
+	return loadedTile;
 }
 
 function resolveElevation(
