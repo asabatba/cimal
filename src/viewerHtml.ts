@@ -224,8 +224,10 @@ export function buildViewerDataUrl(
 
         const spanX = (bounds.maxLon - bounds.minLon) * metersPerDegree.lon;
         const spanZ = (bounds.maxLat - bounds.minLat) * metersPerDegree.lat;
+        const sceneSpan = Math.max(spanX, spanZ);
         const elevationRange = Math.max(1, grid.maxElevation - grid.minElevation);
         const exaggeration = Math.min(6, Math.max(1.6, Math.max(spanX, spanZ) / (elevationRange * 18)));
+        const fogDensity = THREE.MathUtils.clamp(0.075 / Math.max(sceneSpan, 1), 0.000045, 0.00014);
 
         app.innerHTML = \`
           <canvas id="scene"></canvas>
@@ -253,7 +255,7 @@ export function buildViewerDataUrl(
         renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x102029, 0.00024);
+        scene.fog = new THREE.FogExp2(0x102029, fogDensity);
 
         const camera = new THREE.PerspectiveCamera(52, 1, 1, 200000);
         camera.position.set(spanX * 0.6, Math.max(spanX, spanZ) * 0.45, spanZ * 0.8);
@@ -351,6 +353,98 @@ export function buildViewerDataUrl(
         sun.position.set(-spanX * 0.5, Math.max(spanX, spanZ), spanZ * 0.4);
         scene.add(sun);
 
+        const terrainStops = [
+          { t: 0.0, color: new THREE.Color(0x2f5a38) },
+          { t: 0.24, color: new THREE.Color(0x5f8148) },
+          { t: 0.52, color: new THREE.Color(0xae8d5a) },
+          { t: 0.78, color: new THREE.Color(0x757982) },
+          { t: 1.0, color: new THREE.Color(0xe6e2d9) },
+        ];
+
+        function sampleTerrainColor(normalized) {
+          if (normalized <= terrainStops[0].t) {
+            return terrainStops[0].color.clone();
+          }
+
+          for (let index = 1; index < terrainStops.length; index += 1) {
+            const previous = terrainStops[index - 1];
+            const current = terrainStops[index];
+            if (normalized <= current.t) {
+              const localT = (normalized - previous.t) / Math.max(0.0001, current.t - previous.t);
+              return previous.color.clone().lerp(current.color, THREE.MathUtils.smoothstep(localT, 0, 1));
+            }
+          }
+
+          return terrainStops[terrainStops.length - 1].color.clone();
+        }
+
+        function buildTrackRibbon(points, width, heightOffset) {
+          if (points.length < 2) {
+            return null;
+          }
+
+          const halfWidth = width / 2;
+          const up = new THREE.Vector3(0, 1, 0);
+          const centerPoints = points.map((point) =>
+            new THREE.Vector3(
+              point.x,
+              (point.y - grid.minElevation) * exaggeration + heightOffset,
+              point.z,
+            )
+          );
+
+          const positions = new Float32Array(centerPoints.length * 2 * 3);
+          const indices = [];
+          const tangent = new THREE.Vector3();
+          const side = new THREE.Vector3();
+          const lateral = new THREE.Vector3();
+
+          for (let index = 0; index < centerPoints.length; index += 1) {
+            const previous = centerPoints[Math.max(0, index - 1)];
+            const next = centerPoints[Math.min(centerPoints.length - 1, index + 1)];
+
+            tangent.subVectors(next, previous);
+            tangent.y = 0;
+            if (tangent.lengthSq() < 1e-6) {
+              tangent.set(0, 0, -1);
+            } else {
+              tangent.normalize();
+            }
+
+            side.crossVectors(up, tangent);
+            if (side.lengthSq() < 1e-6) {
+              side.set(1, 0, 0);
+            } else {
+              side.normalize();
+            }
+
+            const center = centerPoints[index];
+            lateral.copy(side).multiplyScalar(halfWidth);
+            const left = center.clone().add(lateral);
+            const right = center.clone().sub(lateral);
+
+            const baseOffset = index * 6;
+            positions[baseOffset] = left.x;
+            positions[baseOffset + 1] = left.y;
+            positions[baseOffset + 2] = left.z;
+            positions[baseOffset + 3] = right.x;
+            positions[baseOffset + 4] = right.y;
+            positions[baseOffset + 5] = right.z;
+
+            if (index < centerPoints.length - 1) {
+              const baseIndex = index * 2;
+              indices.push(baseIndex, baseIndex + 1, baseIndex + 2);
+              indices.push(baseIndex + 2, baseIndex + 1, baseIndex + 3);
+            }
+          }
+
+          const ribbonGeometry = new THREE.BufferGeometry();
+          ribbonGeometry.setIndex(indices);
+          ribbonGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+          ribbonGeometry.computeVertexNormals();
+          return ribbonGeometry;
+        }
+
         const geometry = new THREE.BufferGeometry();
         const vertexCount = grid.width * grid.height;
         const positions = new Float32Array(vertexCount * 3);
@@ -370,9 +464,7 @@ export function buildViewerDataUrl(
             positions[pointer + 1] = y;
             positions[pointer + 2] = z;
 
-            const low = new THREE.Color(0x355c3d);
-            const high = new THREE.Color(0xd2c08f);
-            const color = low.lerp(high, Math.pow(normalized, 0.8));
+            const color = sampleTerrainColor(Math.pow(normalized, 0.92));
             colors[pointer] = color.r;
             colors[pointer + 1] = color.g;
             colors[pointer + 2] = color.b;
@@ -405,21 +497,22 @@ export function buildViewerDataUrl(
         const terrain = new THREE.Mesh(geometry, terrainMaterial);
         scene.add(terrain);
 
-        const trackPositions = new Float32Array(track.length * 3);
-        for (let index = 0; index < track.length; index += 1) {
-          const point = track[index];
-          trackPositions[index * 3] = point.x;
-          trackPositions[index * 3 + 1] = (point.y - grid.minElevation) * exaggeration + 7;
-          trackPositions[index * 3 + 2] = point.z;
+        const trackRibbonWidth = THREE.MathUtils.clamp(sceneSpan * 0.012, 14, 60);
+        const trackGeometry = buildTrackRibbon(track, trackRibbonWidth, 8);
+        if (trackGeometry) {
+          const trackRibbon = new THREE.Mesh(
+            trackGeometry,
+            new THREE.MeshStandardMaterial({
+              color: 0xff7b32,
+              roughness: 0.42,
+              metalness: 0.05,
+              emissive: 0x4a220c,
+              emissiveIntensity: 0.35,
+              side: THREE.DoubleSide,
+            }),
+          );
+          scene.add(trackRibbon);
         }
-
-        const trackGeometry = new THREE.BufferGeometry();
-        trackGeometry.setAttribute("position", new THREE.BufferAttribute(trackPositions, 3));
-        const trackLine = new THREE.Line(
-          trackGeometry,
-          new THREE.LineBasicMaterial({ color: 0xff7b32 }),
-        );
-        scene.add(trackLine);
 
         const markerGeometry = new THREE.SphereGeometry(Math.max(6, Math.min(spanX, spanZ) * 0.008), 18, 18);
         const startMaterial = new THREE.MeshStandardMaterial({ color: 0x9fe870 });

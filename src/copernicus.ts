@@ -1,3 +1,4 @@
+import { space } from "@silverbulletmd/silverbullet/syscalls";
 import { fromArrayBuffer } from "geotiff";
 import {
 	COPERNICUS_HTTP_ROOT,
@@ -7,8 +8,6 @@ import {
 } from "./constants.ts";
 import { clamp, intersectBounds } from "./math.ts";
 import type { GeoBounds, TileIndex } from "./types.ts";
-import {space} from "@silverbulletmd/silverbullet/syscalls"
-
 
 type SampleDensity = {
 	lat: number;
