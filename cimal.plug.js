@@ -250,12 +250,12 @@ ${A}
           <aside class="hud">
             <h1>\${escapeText(title)}</h1>
             <p>\${escapeText(sourceUrl)}</p>
-            <div class="stats">
+            <!--<div class="stats">
               <div class="stat"><strong>\${stats.distanceKm.toFixed(1)} km</strong><span>Track length</span></div>
               <div class="stat"><strong>\${Math.round(stats.totalAscent)} m</strong><span>Total ascent</span></div>
-              <!--<div class="stat"><strong>\${grid.minElevation.toFixed(0)}-\${grid.maxElevation.toFixed(0)} m</strong><span>Terrain range</span></div>
-              <div class="stat"><strong>\${stats.tileCount}</strong><span>Copernicus tiles</span></div>-->
-            </div>
+              <div class="stat"><strong>\${grid.minElevation.toFixed(0)}-\${grid.maxElevation.toFixed(0)} m</strong><span>Terrain range</span></div>
+              <div class="stat"><strong>\${stats.tileCount}</strong><span>Copernicus tiles</span></div>
+            </div>-->
           </aside>
           \${warning ? \`<aside class="warning">\${escapeText(warning)}</aside>\` : ""}
           <footer class="attribution" style="display: none;">
@@ -354,11 +354,11 @@ ${A}
             orbitSpherical.setFromVector3(orbitOffset);
 
             if (pressedKeys.has("ArrowLeft")) {
-              orbitSpherical.theta -= orbitSpeed * clampedDelta;
+              orbitSpherical.theta += orbitSpeed * clampedDelta;
               changed = true;
             }
             if (pressedKeys.has("ArrowRight")) {
-              orbitSpherical.theta += orbitSpeed * clampedDelta;
+              orbitSpherical.theta -= orbitSpeed * clampedDelta;
               changed = true;
             }
             if (pressedKeys.has("ArrowUp")) {
@@ -549,6 +549,79 @@ ${A}
           return ribbonGeometry;
         }
 
+        function buildTerrainSideGeometry(topPositions, width, height, bottomY) {
+          const vertices = [];
+
+          function pushQuad(a, b, c, d) {
+            vertices.push(
+              a.x, a.y, a.z,
+              b.x, b.y, b.z,
+              c.x, c.y, c.z,
+              c.x, c.y, c.z,
+              b.x, b.y, b.z,
+              d.x, d.y, d.z,
+            );
+          }
+
+          function addStrip(points) {
+            for (let index = 0; index < points.length - 1; index += 1) {
+              const start = points[index];
+              const end = points[index + 1];
+              const bottomStart = new THREE.Vector3(start.x, bottomY, start.z);
+              const bottomEnd = new THREE.Vector3(end.x, bottomY, end.z);
+              pushQuad(start, bottomStart, end, bottomEnd);
+            }
+          }
+
+          const topEdge = [];
+          const bottomEdge = [];
+          const leftEdge = [];
+          const rightEdge = [];
+
+          for (let column = 0; column < width; column += 1) {
+            const topIndex = column * 3;
+            const bottomIndex = ((height - 1) * width + column) * 3;
+            topEdge.push(new THREE.Vector3(
+              topPositions[topIndex],
+              topPositions[topIndex + 1],
+              topPositions[topIndex + 2],
+            ));
+            bottomEdge.push(new THREE.Vector3(
+              topPositions[bottomIndex],
+              topPositions[bottomIndex + 1],
+              topPositions[bottomIndex + 2],
+            ));
+          }
+
+          for (let row = 0; row < height; row += 1) {
+            const leftIndex = (row * width) * 3;
+            const rightIndex = (row * width + (width - 1)) * 3;
+            leftEdge.push(new THREE.Vector3(
+              topPositions[leftIndex],
+              topPositions[leftIndex + 1],
+              topPositions[leftIndex + 2],
+            ));
+            rightEdge.push(new THREE.Vector3(
+              topPositions[rightIndex],
+              topPositions[rightIndex + 1],
+              topPositions[rightIndex + 2],
+            ));
+          }
+
+          addStrip(topEdge);
+          addStrip([...rightEdge].reverse());
+          addStrip([...bottomEdge].reverse());
+          addStrip(leftEdge);
+
+          const sideGeometry = new THREE.BufferGeometry();
+          sideGeometry.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(vertices, 3),
+          );
+          sideGeometry.computeVertexNormals();
+          return sideGeometry;
+        }
+
         const geometry = new THREE.BufferGeometry();
         const vertexCount = grid.width * grid.height;
         const positions = new Float32Array(vertexCount * 3);
@@ -598,6 +671,37 @@ ${A}
           roughness: 0.94,
           metalness: 0.04,
         });
+        const terrainDepth = Math.max(90, elevationRange * exaggeration * 0.42, sceneSpan * 0.08);
+        const terrainBottomY = -terrainDepth;
+        const sideGeometry = buildTerrainSideGeometry(
+          positions,
+          grid.width,
+          grid.height,
+          terrainBottomY,
+        );
+        const sideMaterial = new THREE.MeshStandardMaterial({
+          color: 0x544d42,
+          roughness: 0.98,
+          metalness: 0.02,
+          side: THREE.DoubleSide,
+        });
+        const terrainSides = new THREE.Mesh(sideGeometry, sideMaterial);
+        scene.add(terrainSides);
+
+        const bottomGeometry = new THREE.PlaneGeometry(spanX, spanZ);
+        bottomGeometry.rotateX(-Math.PI / 2);
+        const terrainBottom = new THREE.Mesh(
+          bottomGeometry,
+          new THREE.MeshStandardMaterial({
+            color: 0x403a31,
+            roughness: 1,
+            metalness: 0,
+            side: THREE.DoubleSide,
+          }),
+        );
+        terrainBottom.position.y = terrainBottomY;
+        scene.add(terrainBottom);
+
         const terrain = new THREE.Mesh(geometry, terrainMaterial);
         scene.add(terrain);
 
