@@ -1,0 +1,14 @@
+{
+  "name": "sb-3d-gpx",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npx plug-compile terrain-gpx.plug.yaml"
+  },
+  "dependencies": {
+    "@silverbulletmd/silverbullet": ">=2.5.3",
+    "fast-xml-parser": "^5.3.1",
+    "geotiff": "^2.1.4-beta.0",
+    "three": "^0.180.0"
+  }
+}
