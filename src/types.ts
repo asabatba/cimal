@@ -66,12 +66,6 @@ export type ErrorPayload = {
 	details?: string;
 };
 
-export type LoadingPayload = {
-	title: string;
-	message: string;
-	progressLabel?: string;
-};
-
 export type TileIndex = {
 	southLat: number;
 	westLon: number;
