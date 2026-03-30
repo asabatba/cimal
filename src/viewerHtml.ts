@@ -1,5 +1,5 @@
 import { COPERNICUS_S3_ROOT, THREE_JS_VERSION } from "./constants.ts";
-import type { ErrorPayload, TerrainPayload } from "./types.ts";
+import type { ErrorPayload, LoadingPayload, TerrainPayload } from "./types.ts";
 
 function escapeHtml(value: string): string {
 	return value
@@ -9,12 +9,14 @@ function escapeHtml(value: string): string {
 		.replaceAll('"', "&quot;");
 }
 
-function toEmbeddedJson(payload: ErrorPayload | TerrainPayload): string {
+function toEmbeddedJson(
+	payload: ErrorPayload | LoadingPayload | TerrainPayload,
+): string {
 	return JSON.stringify(payload).replaceAll("<", "\\u003c");
 }
 
 export function buildViewerDataUrl(
-	payload: ErrorPayload | TerrainPayload,
+	payload: ErrorPayload | LoadingPayload | TerrainPayload,
 ): string {
 	const html = `<!DOCTYPE html>
 <html lang="en">
@@ -140,6 +142,59 @@ export function buildViewerDataUrl(
         padding: 24px;
       }
 
+      .loading-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .loading-card {
+        width: min(420px, 100%);
+        padding: 22px 24px;
+        border-radius: 22px;
+        text-align: center;
+        backdrop-filter: blur(16px);
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+      }
+
+      .loading-card h1 {
+        margin: 14px 0 8px;
+        font-size: 1.05rem;
+      }
+
+      .loading-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .loading-spinner {
+        width: 44px;
+        height: 44px;
+        margin: 0 auto;
+        border-radius: 999px;
+        border: 3px solid rgba(255, 255, 255, 0.14);
+        border-top-color: var(--accent);
+        animation: spin 0.9s linear infinite;
+      }
+
+      .loading-progress {
+        margin-top: 14px;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--accent-soft);
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       .error-card {
         width: min(560px, 100%);
         padding: 22px 24px;
@@ -194,7 +249,22 @@ export function buildViewerDataUrl(
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
 
-      if (payload.message) {
+      function showLoadingState(message = "Fetching terrain and building the 3D scene...") {
+        app.innerHTML = \`
+          <div class="loading-shell">
+            <article class="loading-card">
+              <div class="loading-spinner" aria-hidden="true"></div>
+              <h1>\${escapeText(payload.title || "Loading terrain viewer")}</h1>
+              <p>\${escapeText(message)}</p>
+              <div class="loading-progress">\${escapeText(payload.progressLabel || "GPX + Copernicus DEM")}</div>
+            </article>
+          </div>
+        \`;
+      }
+
+      if (payload.progressLabel) {
+        showLoadingState(payload.message || "Fetching terrain and building the 3D scene...");
+      } else if (payload.message) {
         app.innerHTML = \`
           <div class="error-shell">
             <article class="error-card">
@@ -207,6 +277,7 @@ export function buildViewerDataUrl(
           </div>
         \`;
       } else {
+        showLoadingState("Loading Three.js modules and preparing the terrain scene...");
         const [THREE, { OrbitControls }] = await Promise.all([
           import("https://esm.sh/three@${THREE_JS_VERSION}"),
           import("https://esm.sh/three@${THREE_JS_VERSION}/examples/jsm/controls/OrbitControls.js"),
@@ -237,11 +308,11 @@ export function buildViewerDataUrl(
             <div class="stats">
               <div class="stat"><strong>\${stats.distanceKm.toFixed(1)} km</strong><span>Track length</span></div>
               <div class="stat"><strong>\${Math.round(stats.totalAscent)} m</strong><span>Total ascent</span></div>
-              <div class="stat"><strong>\${grid.minElevation.toFixed(0)}-\${grid.maxElevation.toFixed(0)} m</strong><span>Terrain range</span></div>
-              <div class="stat"><strong>\${stats.tileCount}</strong><span>Copernicus tiles</span></div>
+              <!--<div class="stat"><strong>\${grid.minElevation.toFixed(0)}-\${grid.maxElevation.toFixed(0)} m</strong><span>Terrain range</span></div>
+              <div class="stat"><strong>\${stats.tileCount}</strong><span>Copernicus tiles</span></div>-->
             </div>
           </aside>
-          <footer class="attribution">
+          <footer class="attribution" style="display: none;">
             Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.
             Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.
           </footer>
@@ -498,7 +569,8 @@ export function buildViewerDataUrl(
         scene.add(terrain);
 
         const trackRibbonWidth = THREE.MathUtils.clamp(sceneSpan * 0.012, 14, 60);
-        const trackGeometry = buildTrackRibbon(track, trackRibbonWidth, 8);
+        const trackHeightOffset = THREE.MathUtils.clamp(sceneSpan * 0.0035, 12, 24);
+        const trackGeometry = buildTrackRibbon(track, trackRibbonWidth, trackHeightOffset);
         if (trackGeometry) {
           const trackRibbon = new THREE.Mesh(
             trackGeometry,
@@ -521,11 +593,19 @@ export function buildViewerDataUrl(
         const end = track[track.length - 1];
 
         const startMarker = new THREE.Mesh(markerGeometry, startMaterial);
-        startMarker.position.set(start.x, (start.y - grid.minElevation) * exaggeration + 16, start.z);
+        startMarker.position.set(
+          start.x,
+          (start.y - grid.minElevation) * exaggeration + trackHeightOffset + 10,
+          start.z,
+        );
         scene.add(startMarker);
 
         const endMarker = new THREE.Mesh(markerGeometry, finishMaterial);
-        endMarker.position.set(end.x, (end.y - grid.minElevation) * exaggeration + 16, end.z);
+        endMarker.position.set(
+          end.x,
+          (end.y - grid.minElevation) * exaggeration + trackHeightOffset + 10,
+          end.z,
+        );
         scene.add(endMarker);
 
         const ringGeometry = new THREE.RingGeometry(Math.max(10, Math.min(spanX, spanZ) * 0.01), Math.max(16, Math.min(spanX, spanZ) * 0.016), 48);

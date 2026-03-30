@@ -2,7 +2,6 @@ import {
 	MAX_COPERNICUS_TILES,
 	MAX_GRID_CELLS,
 	MAX_PADDING_METERS,
-	MAX_TRACK_POINTS,
 	MIN_GRID_CELLS,
 	MIN_PADDING_METERS,
 } from "./constants.ts";
@@ -26,6 +25,9 @@ import type {
 	TerrainPayload,
 } from "./types.ts";
 
+const TRACK_RESAMPLE_SPACING_METERS = 50;
+const TRACK_VISUAL_MARGIN_METERS = 180;
+
 function padTrackBounds(bounds: GeoBounds, distanceMeters: number): GeoBounds {
 	const center = getBoundsCenter(bounds);
 	const metersPerDegree = metersPerDegreeAtLatitude(center.lat);
@@ -38,8 +40,14 @@ function padTrackBounds(bounds: GeoBounds, distanceMeters: number): GeoBounds {
 	const lonPadding = paddingMeters / metersPerDegree.lon;
 	const spanLatPadding = Math.max(boundsHeight(bounds) * 0.18, latPadding);
 	const spanLonPadding = Math.max(boundsWidth(bounds) * 0.18, lonPadding);
+	const visualLatPadding = TRACK_VISUAL_MARGIN_METERS / metersPerDegree.lat;
+	const visualLonPadding = TRACK_VISUAL_MARGIN_METERS / metersPerDegree.lon;
 
-	return expandBounds(bounds, spanLatPadding, spanLonPadding);
+	return expandBounds(
+		bounds,
+		spanLatPadding + visualLatPadding,
+		spanLonPadding + visualLonPadding,
+	);
 }
 
 function pickGridSize(
@@ -74,18 +82,81 @@ function pickGridSize(
 	};
 }
 
-function decimateTrack(points: GeoPoint[]): GeoPoint[] {
-	if (points.length <= MAX_TRACK_POINTS) {
+function lerpGeoPoint(start: GeoPoint, end: GeoPoint, t: number): GeoPoint {
+	return {
+		lat: lerp(start.lat, end.lat, t),
+		lon: lerp(start.lon, end.lon, t),
+		ele:
+			start.ele != null && end.ele != null
+				? lerp(start.ele, end.ele, t)
+				: (start.ele ?? end.ele ?? null),
+	};
+}
+
+function resampleTrack(points: GeoPoint[], spacingMeters: number): GeoPoint[] {
+	if (points.length <= 2) {
 		return points;
 	}
 
-	const step = Math.ceil(points.length / MAX_TRACK_POINTS);
-	const reduced = points.filter((_, index) => index % step === 0);
-	const lastPoint = points[points.length - 1];
-	if (reduced[reduced.length - 1] !== lastPoint) {
-		reduced.push(lastPoint);
+	const resampled: GeoPoint[] = [points[0]];
+	let nextSampleDistance = spacingMeters;
+	let traveledDistance = 0;
+
+	for (let index = 1; index < points.length; index += 1) {
+		const previous = points[index - 1];
+		const current = points[index];
+		const segmentDistance = computeDistanceMeters(previous, current);
+
+		if (segmentDistance <= 0) {
+			continue;
+		}
+
+		while (traveledDistance + segmentDistance >= nextSampleDistance) {
+			const segmentRatio =
+				(nextSampleDistance - traveledDistance) / segmentDistance;
+			resampled.push(lerpGeoPoint(previous, current, segmentRatio));
+			nextSampleDistance += spacingMeters;
+		}
+
+		traveledDistance += segmentDistance;
 	}
-	return reduced;
+
+	const lastPoint = points[points.length - 1];
+	const previousPoint = resampled[resampled.length - 1];
+	if (
+		previousPoint.lat !== lastPoint.lat ||
+		previousPoint.lon !== lastPoint.lon
+	) {
+		resampled.push(lastPoint);
+	}
+
+	return resampled;
+}
+
+function snapTrackToTerrain(
+	points: GeoPoint[],
+	loadedTiles: Awaited<ReturnType<typeof loadTile>>[],
+	minElevation: number,
+	center: { lat: number; lon: number },
+	metersPerDegree: { lat: number; lon: number },
+): LocalPoint[] {
+	let lastResolvedElevation: number | null = null;
+
+	return points.map<LocalPoint>((point) => {
+		const sampledElevation = sampleElevation(loadedTiles, point.lat, point.lon);
+		const elevation = sampledElevation ?? lastResolvedElevation ?? minElevation;
+		lastResolvedElevation = elevation;
+
+		const projected = projectToLocalMeters(point, center, metersPerDegree);
+		return {
+			x: projected.x,
+			z: projected.z,
+			y: elevation,
+			lat: point.lat,
+			lon: point.lon,
+			elevation,
+		};
+	});
 }
 
 function computeTrackElevationStats(points: LocalPoint[]): {
@@ -173,22 +244,17 @@ export async function buildTerrainPayload(
 		}
 	}
 
-	const renderedTrack = decimateTrack(track.points).map<LocalPoint>((point) => {
-		const elevation =
-			sampleElevation(loadedTiles, point.lat, point.lon) ??
-			point.ele ??
-			minElevation;
-		const projected = projectToLocalMeters(point, center, metersPerDegree);
-
-		return {
-			x: projected.x,
-			z: projected.z,
-			y: elevation,
-			lat: point.lat,
-			lon: point.lon,
-			elevation,
-		};
-	});
+	const resampledTrack = resampleTrack(
+		track.points,
+		TRACK_RESAMPLE_SPACING_METERS,
+	);
+	const renderedTrack = snapTrackToTerrain(
+		resampledTrack,
+		loadedTiles,
+		minElevation,
+		center,
+		metersPerDegree,
+	);
 
 	const elevationStats = computeTrackElevationStats(renderedTrack);
 	const title = gpxUrl.split("/").filter(Boolean).pop() ?? "GPX track";
