@@ -1,5 +1,6 @@
-import { extractGpxSource } from "./input.ts";
-import { buildTerrainPayload } from "./terrain.ts";
+import { space } from "@silverbulletmd/silverbullet/syscalls";
+import { extractPackPath } from "./input.ts";
+import { decodeTerrainPack } from "./pack.ts";
 import type { ErrorPayload } from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
 
@@ -17,8 +18,9 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	height: number;
 }> {
 	try {
-		const gpxSource = extractGpxSource(bodyText);
-		const payload = await buildTerrainPayload(gpxSource);
+		const packPath = extractPackPath(bodyText);
+		const packed = await space.readFile(packPath);
+		const payload = decodeTerrainPack(packed);
 		return {
 			url: buildViewerDataUrl(payload),
 			width: 960,
@@ -27,7 +29,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unknown error";
 		return {
-			url: buildViewerDataUrl(buildError("Cimal preview failed", message)),
+			url: buildViewerDataUrl(buildError("Cimal pack preview failed", message)),
 			width: 960,
 			height: 340,
 		};

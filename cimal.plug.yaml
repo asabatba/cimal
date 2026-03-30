@@ -2,14 +2,27 @@ name: cimal
 requiredPermissions:
   - fetch
 functions:
+  buildCimalPackFromGpx:
+    path: src/index.ts:buildCimalPackFromGpx
+    command:
+      name: "Cimal: Build pack from GPX"
+    slashCommand:
+      name: "cimal-build"
+      description: "Build a .cimal pack from a GPX source"
   insertGpxTerrainBlock:
     path: src/index.ts:insertGpxTerrainBlock
     command:
       name: "Cimal: Insert widget"
+    slashCommand:
+      name: "cimal"
+      description: "Insert a cimal widget for an existing .cimal pack"
   refreshGpxTerrainWidgets:
     path: src/index.ts:refreshGpxTerrainWidgets
     command:
       name: "Cimal: Refresh widgets"
+    slashCommand:
+      name: "cimal-refresh"
+      description: "Refresh rendered cimal widgets"
   renderGpxTerrainWidget:
     path: src/index.ts:renderGpxTerrainWidget
     codeWidget: cimal

@@ -1,19 +1,68 @@
-import { codeWidget, editor } from "@silverbulletmd/silverbullet/syscalls";
+import {
+	codeWidget,
+	editor,
+	space,
+} from "@silverbulletmd/silverbullet/syscalls";
 import { GPX_WIDGET_LANGUAGE } from "./constants.ts";
-import { normalizeGpxUrl } from "./input.ts";
+import { normalizeGpxSource, normalizePackPath } from "./input.ts";
+import { encodeTerrainPack } from "./pack.ts";
+import { buildTerrainPayload } from "./terrain.ts";
 
-function buildWidgetSnippet(gpxUrl: string): string {
-	return `\n\`\`\`${GPX_WIDGET_LANGUAGE}\n${gpxUrl}\n\`\`\`\n`;
+function buildWidgetSnippet(packPath: string): string {
+	return `\n\`\`\`${GPX_WIDGET_LANGUAGE}\n${packPath}\n\`\`\`\n`;
+}
+
+function defaultPackPathForSource(source: string): string {
+	let sourceTail = source;
+	if (/^https?:\/\//i.test(source)) {
+		try {
+			sourceTail = new URL(source).pathname;
+		} catch {
+			sourceTail = source;
+		}
+	}
+
+	const baseName =
+		sourceTail
+			.split(/[\\/]/)
+			.filter(Boolean)
+			.pop()
+			?.replace(/\.gpx$/i, "")
+			?.replace(/\.[^.]+$/u, "") || "track";
+	const safeBaseName = baseName.replaceAll(/[^A-Za-z0-9._-]+/g, "-");
+	return `Library/Cimal/${safeBaseName}.cimal`;
+}
+
+export async function buildCimalPackFromGpx(): Promise<void> {
+	const sourceResponse = await editor.prompt("GPX URL or space path");
+	if (!sourceResponse) {
+		return;
+	}
+
+	const gpxSource = normalizeGpxSource(sourceResponse);
+	const outputResponse = await editor.prompt(
+		"Output .cimal path",
+		defaultPackPathForSource(gpxSource),
+	);
+	if (!outputResponse) {
+		return;
+	}
+
+	const outputPath = normalizePackPath(outputResponse);
+	const payload = await buildTerrainPayload(gpxSource);
+	const packed = encodeTerrainPack(payload);
+	await space.writeFile(outputPath, packed);
+	await editor.flashNotification(`Built ${outputPath}.`);
 }
 
 export async function insertGpxTerrainBlock(): Promise<void> {
-	const response = await editor.prompt("GPX URL or space path");
+	const response = await editor.prompt("Cimal pack path");
 	if (!response) {
 		return;
 	}
 
-	const gpxUrl = normalizeGpxUrl(response);
-	await editor.insertAtCursor(buildWidgetSnippet(gpxUrl), true);
+	const packPath = normalizePackPath(response);
+	await editor.insertAtCursor(buildWidgetSnippet(packPath), true);
 	await codeWidget.refreshAll();
 	await editor.flashNotification("Inserted cimal widget.");
 }

@@ -24,8 +24,8 @@ export type LocalPoint = {
 	x: number;
 	z: number;
 	y: number;
-	lat: number;
-	lon: number;
+	lat?: number;
+	lon?: number;
 	elevation: number;
 };
 
@@ -89,4 +89,27 @@ export type TerrainCacheIndexEntry = {
 export type TerrainCacheIndex = {
 	version: number;
 	entries: Record<string, TerrainCacheIndexEntry>;
+};
+
+export type CimalPackHeader = {
+	version: number;
+	title: string;
+	sourceUrl: string;
+	bounds: GeoBounds;
+	center: {
+		lat: number;
+		lon: number;
+	};
+	metersPerDegree: {
+		lat: number;
+		lon: number;
+	};
+	grid: {
+		width: number;
+		height: number;
+		minElevation: number;
+		maxElevation: number;
+	};
+	stats: TerrainPayload["stats"];
+	trackPointCount: number;
 };

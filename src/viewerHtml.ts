@@ -201,8 +201,8 @@ export function buildViewerDataUrl(
               <h1>\${escapeText(payload.title)}</h1>
               <p>\${escapeText(payload.message)}</p>
               \${payload.details ? \`<p><code>\${escapeText(payload.details)}</code></p>\` : ""}
-              <p>Use a direct <code>.gpx</code> URL in the widget body, for example:</p>
-              <p><code>https://example.com/track.gpx</code></p>
+              <p>Use a <code>.cimal</code> pack path in the widget body, for example:</p>
+              <p><code>Library/Cimal/track.cimal</code></p>
             </article>
           </div>
         \`;
