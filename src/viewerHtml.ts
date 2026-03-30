@@ -2,19 +2,21 @@ import { COPERNICUS_S3_ROOT, THREE_JS_VERSION } from "./constants.ts";
 import type { ErrorPayload, TerrainPayload } from "./types.ts";
 
 function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;");
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
 }
 
 function toEmbeddedJson(payload: ErrorPayload | TerrainPayload): string {
-  return JSON.stringify(payload).replaceAll("<", "\\u003c");
+	return JSON.stringify(payload).replaceAll("<", "\\u003c");
 }
 
-export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): string {
-  const html = `<!DOCTYPE html>
+export function buildViewerDataUrl(
+	payload: ErrorPayload | TerrainPayload,
+): string {
+	const html = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -57,6 +59,7 @@ export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): stri
         width: 100%;
         height: 100%;
         display: block;
+        outline: none;
       }
 
       .hud,
@@ -205,8 +208,8 @@ export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): stri
         \`;
       } else {
         const [THREE, { OrbitControls }] = await Promise.all([
-          import("https://unpkg.com/three@${THREE_JS_VERSION}/build/three.module.js"),
-          import("https://unpkg.com/three@${THREE_JS_VERSION}/examples/jsm/controls/OrbitControls.js"),
+          import("https://esm.sh/three@${THREE_JS_VERSION}"),
+          import("https://esm.sh/three@${THREE_JS_VERSION}/examples/jsm/controls/OrbitControls.js"),
         ]);
 
         const {
@@ -238,11 +241,13 @@ export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): stri
           </aside>
           <footer class="attribution">
             Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.
-            Orbit with drag, zoom with the wheel, pan with right-click or two-finger drag.
+            Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.
           </footer>
         \`;
 
         const canvas = document.getElementById("scene");
+        canvas.tabIndex = 0;
+        canvas.setAttribute("aria-label", "3D terrain map");
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -256,6 +261,90 @@ export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): stri
         const controls = new OrbitControls(camera, canvas);
         controls.enableDamping = true;
         controls.target.set(0, elevationRange * exaggeration * 0.18, 0);
+        controls.keyPanSpeed = Math.max(20, Math.min(spanX, spanZ) * 0.03);
+
+        function panCamera(deltaX, deltaZ) {
+          const forward = new THREE.Vector3();
+          camera.getWorldDirection(forward);
+          forward.y = 0;
+          if (forward.lengthSq() < 1e-6) {
+            forward.set(0, 0, -1);
+          } else {
+            forward.normalize();
+          }
+
+          const right = new THREE.Vector3();
+          right.crossVectors(forward, camera.up).normalize();
+
+          const panOffset = right.multiplyScalar(deltaX).add(forward.multiplyScalar(deltaZ));
+          camera.position.add(panOffset);
+          controls.target.add(panOffset);
+        }
+
+        function zoomCamera(delta) {
+          const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+          const currentDistance = offset.length();
+          const nextDistance = Math.max(80, currentDistance + delta);
+          offset.setLength(nextDistance);
+          camera.position.copy(controls.target).add(offset);
+        }
+
+        function handleKeyboard(event) {
+          if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+            return;
+          }
+
+          const orbitStep = 0.14;
+          const panStep = Math.max(12, Math.min(spanX, spanZ) * 0.018);
+          const zoomStep = Math.max(30, Math.min(spanX, spanZ) * 0.04);
+
+          switch (event.key) {
+            case "ArrowLeft":
+              controls.rotateLeft(orbitStep);
+              break;
+            case "ArrowRight":
+              controls.rotateLeft(-orbitStep);
+              break;
+            case "ArrowUp":
+              controls.rotateUp(orbitStep * 0.75);
+              break;
+            case "ArrowDown":
+              controls.rotateUp(-orbitStep * 0.75);
+              break;
+            case "w":
+            case "W":
+              panCamera(0, panStep);
+              break;
+            case "s":
+            case "S":
+              panCamera(0, -panStep);
+              break;
+            case "a":
+            case "A":
+              panCamera(panStep, 0);
+              break;
+            case "d":
+            case "D":
+              panCamera(-panStep, 0);
+              break;
+            case "r":
+            case "R":
+              zoomCamera(-zoomStep);
+              break;
+            case "f":
+            case "F":
+              zoomCamera(zoomStep);
+              break;
+            default:
+              return;
+          }
+
+          event.preventDefault();
+          controls.update();
+        }
+
+        canvas.addEventListener("pointerdown", () => canvas.focus());
+        canvas.addEventListener("keydown", handleKeyboard);
 
         scene.add(new THREE.HemisphereLight(0xdaf2ff, 0x1b272b, 1.2));
         const sun = new THREE.DirectionalLight(0xfff1d6, 1.2);
@@ -378,5 +467,5 @@ export function buildViewerDataUrl(payload: ErrorPayload | TerrainPayload): stri
   </body>
 </html>`;
 
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }

@@ -1,5 +1,5 @@
 ---
-name: Library/you/terrain-gpx/PLUG
+name: Library/terrain-gpx/PLUG
 tags: meta/library
 files:
 - terrain-gpx.plug.js

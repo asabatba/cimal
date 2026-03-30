@@ -1,16 +1,33 @@
 name: terrain-gpx
+requiredPermissions:
+  - fetch
 functions:
   insertGpxTerrainBlock:
     path: src/index.ts:insertGpxTerrainBlock
     command:
       name: "GPX Terrain: Insert 3D widget"
-      requireEditor: page
+  insertGpxTerrainBlockAlias:
+    path: src/index.ts:insertGpxTerrainBlock
+    command:
+      name: "Insert GPX Terrain 3D Widget"
   refreshGpxTerrainWidgets:
     path: src/index.ts:refreshGpxTerrainWidgets
     command:
       name: "GPX Terrain: Refresh widgets"
-      requireEditor: page
+  renderGpxTerrainWidgetCompat:
+    path: src/index.ts:renderGpxTerrainWidget
+    codeWidget: gpxterrain
+    renderMode: iframe
+  renderGpxTerrainWidgetCompat3d:
+    path: src/index.ts:renderGpxTerrainWidget
+    codeWidget: gpx3d
+    renderMode: iframe
   renderGpxTerrainWidget:
     path: src/index.ts:renderGpxTerrainWidget
     codeWidget: gpx-terrain
     renderMode: iframe
+  syncGpxTerrainRuntime:
+    path: src/index.ts:syncGpxTerrainRuntime
+    events:
+      - plugs:loaded
+      - editor:pageLoaded
