@@ -40,6 +40,7 @@ export type TerrainGrid = {
 export type TerrainPayload = {
 	title: string;
 	sourceUrl: string;
+	warning?: string;
 	bounds: GeoBounds;
 	center: {
 		lat: number;

@@ -63,6 +63,7 @@ export function buildViewerDataUrl(
       }
 
       .hud,
+      .warning,
       .attribution,
       .error-card {
         position: absolute;
@@ -90,6 +91,19 @@ export function buildViewerDataUrl(
         margin: 0;
         font-size: 0.88rem;
         color: var(--muted);
+      }
+
+      .warning {
+        top: 16px;
+        right: 16px;
+        max-width: min(360px, calc(100vw - 32px));
+        padding: 12px 14px;
+        border-radius: 16px;
+        border-color: rgba(255, 208, 143, 0.26);
+        background: rgba(54, 34, 16, 0.82);
+        color: var(--accent-soft);
+        font-size: 0.82rem;
+        line-height: 1.45;
       }
 
       .stats {
@@ -169,6 +183,14 @@ export function buildViewerDataUrl(
           max-width: none;
         }
 
+        .warning {
+          left: 12px;
+          right: 12px;
+          top: auto;
+          bottom: 72px;
+          max-width: none;
+        }
+
         .stats {
           grid-template-columns: 1fr 1fr;
         }
@@ -215,6 +237,7 @@ export function buildViewerDataUrl(
         const {
           title,
           sourceUrl,
+          warning,
           bounds,
           metersPerDegree,
           grid,
@@ -241,6 +264,7 @@ export function buildViewerDataUrl(
               <div class="stat"><strong>\${stats.tileCount}</strong><span>Copernicus tiles</span></div>-->
             </div>
           </aside>
+          \${warning ? \`<aside class="warning">\${escapeText(warning)}</aside>\` : ""}
           <footer class="attribution" style="display: none;">
             Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.
             Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.

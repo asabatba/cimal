@@ -33,6 +33,8 @@ Library/Cimal/track.cimal
 
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
+If a `cimal` widget still contains a raw GPX URL or GPX space path, Cimal will fall back to the slower live-build path and show an on-screen warning recommending that you build a `.cimal` pack instead.
+
 ## Development
 
 The plug is split into modular TypeScript files under `src/`:
