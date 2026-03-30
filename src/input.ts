@@ -1,10 +1,30 @@
-export function normalizeGpxUrl(input: string): string {
+function isRemoteUrl(candidate: string): boolean {
+	return /^https?:\/\//i.test(candidate);
+}
+
+function unwrapWikiLink(candidate: string): string {
+	const trimmed = candidate.trim();
+	const match = /^\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(trimmed);
+	if (!match) {
+		return trimmed;
+	}
+	return match[1].trim();
+}
+
+export function normalizeGpxSource(input: string): string {
 	const trimmed = input.trim();
 	if (!trimmed) {
-		throw new Error("A GPX URL is required.");
+		throw new Error("A GPX URL or space path is required.");
 	}
 
-	const candidate = trimmed.replace(/^url\s*:\s*/i, "");
+	const candidate = unwrapWikiLink(
+		trimmed.replace(/^url\s*:\s*/i, "").replace(/^space\s*:\s*/i, ""),
+	);
+
+	if (!isRemoteUrl(candidate)) {
+		return candidate;
+	}
+
 	const url = new URL(candidate);
 
 	if (url.hostname === "github.com") {
@@ -22,15 +42,23 @@ export function normalizeGpxUrl(input: string): string {
 	return url.toString();
 }
 
-export function extractGpxUrl(bodyText: string): string {
+export function normalizeGpxUrl(input: string): string {
+	return normalizeGpxSource(input);
+}
+
+export function extractGpxSource(bodyText: string): string {
 	const lines = bodyText.split(/\r?\n/);
 	const firstMeaningfulLine = lines
 		.map((line) => line.trim())
 		.find((line) => line && !line.startsWith("#"));
 
 	if (!firstMeaningfulLine) {
-		throw new Error("Add a GPX URL inside the widget body.");
+		throw new Error("Add a GPX URL or space path inside the widget body.");
 	}
 
-	return normalizeGpxUrl(firstMeaningfulLine);
+	return normalizeGpxSource(firstMeaningfulLine);
+}
+
+export function extractGpxUrl(bodyText: string): string {
+	return extractGpxSource(bodyText);
 }

@@ -7,7 +7,7 @@ function buildWidgetSnippet(gpxUrl: string): string {
 }
 
 export async function insertGpxTerrainBlock(): Promise<void> {
-	const response = await editor.prompt("GPX URL");
+	const response = await editor.prompt("GPX URL or space path");
 	if (!response) {
 		return;
 	}

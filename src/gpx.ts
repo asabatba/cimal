@@ -1,3 +1,4 @@
+import { space } from "@silverbulletmd/silverbullet/syscalls";
 import { XMLParser } from "fast-xml-parser";
 import { computeBounds, computeDistanceMeters } from "./math.ts";
 import type { GeoPoint, TrackData } from "./types.ts";
@@ -51,15 +52,36 @@ function extractTrackPoints(gpxRoot: XmlNode): GeoPoint[] {
 	return trackPoints.length > 0 ? trackPoints : routePoints;
 }
 
-export async function fetchTrackData(gpxUrl: string): Promise<TrackData> {
-	const response = await fetch(gpxUrl);
-	if (!response.ok) {
-		throw new Error(
-			`Failed to fetch GPX file: ${response.status} ${response.statusText}`,
-		);
+function isRemoteUrl(source: string): boolean {
+	return /^https?:\/\//i.test(source);
+}
+
+async function readGpxXml(source: string): Promise<string> {
+	if (isRemoteUrl(source)) {
+		const response = await fetch(source);
+		if (!response.ok) {
+			throw new Error(
+				`Failed to fetch GPX file: ${response.status} ${response.statusText}`,
+			);
+		}
+		return await response.text();
 	}
 
-	const xml = await response.text();
+	const candidates = source.endsWith(".gpx")
+		? [source]
+		: [source, `${source}.gpx`];
+	for (const candidate of candidates) {
+		if (await space.fileExists(candidate)) {
+			const data = await space.readFile(candidate);
+			return new TextDecoder().decode(data);
+		}
+	}
+
+	throw new Error(`GPX file not found in space: ${source}`);
+}
+
+export async function fetchTrackData(gpxSource: string): Promise<TrackData> {
+	const xml = await readGpxXml(gpxSource);
 	const parsed = parser.parse(xml);
 	const gpxRoot = parsed.gpx ?? parsed;
 	const points = extractTrackPoints(gpxRoot);
@@ -89,7 +111,7 @@ export async function fetchTrackData(gpxUrl: string): Promise<TrackData> {
 	}
 
 	return {
-		sourceUrl: gpxUrl,
+		sourceUrl: gpxSource,
 		points,
 		bounds,
 		distanceMeters,

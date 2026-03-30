@@ -1,4 +1,4 @@
-import { extractGpxUrl } from "./input.ts";
+import { extractGpxSource } from "./input.ts";
 import { buildTerrainPayload } from "./terrain.ts";
 import type { ErrorPayload } from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
@@ -17,8 +17,8 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	height: number;
 }> {
 	try {
-		const gpxUrl = extractGpxUrl(bodyText);
-		const payload = await buildTerrainPayload(gpxUrl);
+		const gpxSource = extractGpxSource(bodyText);
+		const payload = await buildTerrainPayload(gpxSource);
 		return {
 			url: buildViewerDataUrl(payload),
 			width: 960,

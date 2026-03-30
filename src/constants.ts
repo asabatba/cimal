@@ -15,6 +15,10 @@ export const MAX_COPERNICUS_TILES = 16;
 export const MAX_TILE_SAMPLE_SIZE = 640;
 export const TILE_FETCH_TIMEOUT_MS = 45000;
 export const THREE_JS_VERSION = "0.180.0";
+export const TERRAIN_CACHE_VERSION = 1;
+export const TERRAIN_CACHE_ROOT = "Library/.cache/terrain-gpx";
+export const TERRAIN_CACHE_INDEX_PATH = `${TERRAIN_CACHE_ROOT}/v${TERRAIN_CACHE_VERSION}/index.json`;
+export const TERRAIN_CACHE_MAX_BYTES = 250 * 1024 * 1024;
 
 export const DEFAULT_BOUNDS: GeoBounds = {
 	minLat: 0,

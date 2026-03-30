@@ -264,89 +264,176 @@ export function buildViewerDataUrl(
         controls.enableDamping = true;
         controls.target.set(0, elevationRange * exaggeration * 0.18, 0);
         controls.keyPanSpeed = Math.max(20, Math.min(spanX, spanZ) * 0.03);
+        const pressedKeys = new Set();
+        const keyboardVector = new THREE.Vector3();
+        const orbitOffset = new THREE.Vector3();
+        const orbitForward = new THREE.Vector3();
+        const orbitRight = new THREE.Vector3();
+        const orbitSpherical = new THREE.Spherical();
+        const minCameraDistance = 80;
+        const maxCameraDistance = Math.max(sceneSpan * 4, minCameraDistance * 6);
+        controls.minDistance = minCameraDistance;
+        controls.maxDistance = maxCameraDistance;
 
-        function panCamera(deltaX, deltaZ) {
-          const forward = new THREE.Vector3();
-          camera.getWorldDirection(forward);
-          forward.y = 0;
-          if (forward.lengthSq() < 1e-6) {
-            forward.set(0, 0, -1);
-          } else {
-            forward.normalize();
-          }
-
-          const right = new THREE.Vector3();
-          right.crossVectors(forward, camera.up).normalize();
-
-          const panOffset = right.multiplyScalar(deltaX).add(forward.multiplyScalar(deltaZ));
-          camera.position.add(panOffset);
-          controls.target.add(panOffset);
+        function isKeyboardAction(code) {
+          return code === "ArrowLeft"
+            || code === "ArrowRight"
+            || code === "ArrowUp"
+            || code === "ArrowDown"
+            || code === "KeyW"
+            || code === "KeyA"
+            || code === "KeyS"
+            || code === "KeyD"
+            || code === "KeyR"
+            || code === "KeyF";
         }
 
-        function zoomCamera(delta) {
-          const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-          const currentDistance = offset.length();
-          const nextDistance = Math.max(80, currentDistance + delta);
-          offset.setLength(nextDistance);
-          camera.position.copy(controls.target).add(offset);
+        function clearPressedKeys() {
+          pressedKeys.clear();
         }
 
-        function handleKeyboard(event) {
+        function handleKeyboardDown(event) {
           if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
             return;
           }
 
-          const orbitStep = 0.14;
-          const panStep = Math.max(12, Math.min(spanX, spanZ) * 0.018);
-          const zoomStep = Math.max(30, Math.min(spanX, spanZ) * 0.04);
-
-          switch (event.key) {
-            case "ArrowLeft":
-              controls.rotateLeft(orbitStep);
-              break;
-            case "ArrowRight":
-              controls.rotateLeft(-orbitStep);
-              break;
-            case "ArrowUp":
-              controls.rotateUp(orbitStep * 0.75);
-              break;
-            case "ArrowDown":
-              controls.rotateUp(-orbitStep * 0.75);
-              break;
-            case "w":
-            case "W":
-              panCamera(0, panStep);
-              break;
-            case "s":
-            case "S":
-              panCamera(0, -panStep);
-              break;
-            case "a":
-            case "A":
-              panCamera(panStep, 0);
-              break;
-            case "d":
-            case "D":
-              panCamera(-panStep, 0);
-              break;
-            case "r":
-            case "R":
-              zoomCamera(-zoomStep);
-              break;
-            case "f":
-            case "F":
-              zoomCamera(zoomStep);
-              break;
-            default:
-              return;
+          if (!isKeyboardAction(event.code)) {
+            return;
           }
 
+          pressedKeys.add(event.code);
           event.preventDefault();
-          controls.update();
+        }
+
+        function handleKeyboardUp(event) {
+          pressedKeys.delete(event.code);
+          if (isKeyboardAction(event.code)) {
+            event.preventDefault();
+          }
+        }
+
+        function applyKeyboardMotion(deltaSeconds) {
+          if (!pressedKeys.size || document.activeElement !== canvas) {
+            return;
+          }
+
+          const clampedDelta = Math.min(deltaSeconds, 1 / 20);
+          if (clampedDelta <= 0) {
+            return;
+          }
+
+          const orbitSpeed = 1.65;
+          const panSpeed = Math.max(90, sceneSpan * 0.55);
+          const zoomSpeed = Math.max(140, sceneSpan * 0.95);
+          let changed = false;
+
+          if (
+            pressedKeys.has("ArrowLeft")
+            || pressedKeys.has("ArrowRight")
+            || pressedKeys.has("ArrowUp")
+            || pressedKeys.has("ArrowDown")
+          ) {
+            orbitOffset.subVectors(camera.position, controls.target);
+            orbitSpherical.setFromVector3(orbitOffset);
+
+            if (pressedKeys.has("ArrowLeft")) {
+              orbitSpherical.theta -= orbitSpeed * clampedDelta;
+              changed = true;
+            }
+            if (pressedKeys.has("ArrowRight")) {
+              orbitSpherical.theta += orbitSpeed * clampedDelta;
+              changed = true;
+            }
+            if (pressedKeys.has("ArrowUp")) {
+              orbitSpherical.phi = Math.max(
+                controls.minPolarAngle + 0.01,
+                orbitSpherical.phi - orbitSpeed * 0.72 * clampedDelta,
+              );
+              changed = true;
+            }
+            if (pressedKeys.has("ArrowDown")) {
+              orbitSpherical.phi = Math.min(
+                controls.maxPolarAngle - 0.01,
+                orbitSpherical.phi + orbitSpeed * 0.72 * clampedDelta,
+              );
+              changed = true;
+            }
+
+            orbitSpherical.makeSafe();
+            orbitOffset.setFromSpherical(orbitSpherical);
+            camera.position.copy(controls.target).add(orbitOffset);
+          }
+
+          if (
+            pressedKeys.has("KeyW")
+            || pressedKeys.has("KeyA")
+            || pressedKeys.has("KeyS")
+            || pressedKeys.has("KeyD")
+          ) {
+            camera.getWorldDirection(orbitForward);
+            orbitForward.y = 0;
+            if (orbitForward.lengthSq() < 1e-6) {
+              orbitForward.set(0, 0, -1);
+            } else {
+              orbitForward.normalize();
+            }
+
+            orbitRight.crossVectors(orbitForward, camera.up);
+            if (orbitRight.lengthSq() < 1e-6) {
+              orbitRight.set(-1, 0, 0);
+            } else {
+              orbitRight.normalize();
+            }
+
+            keyboardVector.set(0, 0, 0);
+            if (pressedKeys.has("KeyW")) {
+              keyboardVector.add(orbitForward);
+            }
+            if (pressedKeys.has("KeyS")) {
+              keyboardVector.sub(orbitForward);
+            }
+            if (pressedKeys.has("KeyA")) {
+              keyboardVector.sub(orbitRight);
+            }
+            if (pressedKeys.has("KeyD")) {
+              keyboardVector.add(orbitRight);
+            }
+
+            if (keyboardVector.lengthSq() > 0) {
+              keyboardVector.normalize().multiplyScalar(panSpeed * clampedDelta);
+              camera.position.add(keyboardVector);
+              controls.target.add(keyboardVector);
+              changed = true;
+            }
+          }
+
+          if (pressedKeys.has("KeyR") || pressedKeys.has("KeyF")) {
+            orbitOffset.subVectors(camera.position, controls.target);
+            const currentDistance = orbitOffset.length();
+            const zoomDirection = (pressedKeys.has("KeyF") ? 1 : 0) - (pressedKeys.has("KeyR") ? 1 : 0);
+            const nextDistance = THREE.MathUtils.clamp(
+              currentDistance + zoomDirection * zoomSpeed * clampedDelta,
+              minCameraDistance,
+              maxCameraDistance,
+            );
+
+            if (Math.abs(nextDistance - currentDistance) > 0.001) {
+              orbitOffset.setLength(nextDistance);
+              camera.position.copy(controls.target).add(orbitOffset);
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            camera.updateMatrixWorld();
+          }
         }
 
         canvas.addEventListener("pointerdown", () => canvas.focus());
-        canvas.addEventListener("keydown", handleKeyboard);
+        canvas.addEventListener("keydown", handleKeyboardDown);
+        canvas.addEventListener("keyup", handleKeyboardUp);
+        canvas.addEventListener("blur", clearPressedKeys);
+        window.addEventListener("blur", clearPressedKeys);
 
         scene.add(new THREE.HemisphereLight(0xdaf2ff, 0x1b272b, 1.2));
         const sun = new THREE.DirectionalLight(0xfff1d6, 1.2);
@@ -554,8 +641,13 @@ export function buildViewerDataUrl(
           camera.updateProjectionMatrix();
         }
 
-        function animate() {
+        let lastFrameTime = performance.now();
+
+        function animate(frameTime) {
           requestAnimationFrame(animate);
+          const deltaSeconds = Math.max(0, (frameTime - lastFrameTime) / 1000);
+          lastFrameTime = frameTime;
+          applyKeyboardMotion(deltaSeconds);
           ring.rotation.z += 0.0025;
           controls.update();
           renderer.render(scene, camera);

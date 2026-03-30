@@ -70,3 +70,23 @@ export type TileIndex = {
 	southLat: number;
 	westLon: number;
 };
+
+export type SampledTile = {
+	bounds: GeoBounds;
+	width: number;
+	height: number;
+	values: Float32Array;
+	noDataValue: number | null;
+};
+
+export type TerrainCacheIndexEntry = {
+	key: string;
+	path: string;
+	size: number;
+	lastUsed: number;
+};
+
+export type TerrainCacheIndex = {
+	version: number;
+	entries: Record<string, TerrainCacheIndexEntry>;
+};
