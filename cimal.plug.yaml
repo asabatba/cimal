@@ -1,0 +1,21 @@
+name: cimal
+requiredPermissions:
+  - fetch
+functions:
+  insertGpxTerrainBlock:
+    path: src/index.ts:insertGpxTerrainBlock
+    command:
+      name: "Cimal: Insert widget"
+  refreshGpxTerrainWidgets:
+    path: src/index.ts:refreshGpxTerrainWidgets
+    command:
+      name: "Cimal: Refresh widgets"
+  renderGpxTerrainWidget:
+    path: src/index.ts:renderGpxTerrainWidget
+    codeWidget: cimal
+    renderMode: iframe
+  syncGpxTerrainRuntime:
+    path: src/index.ts:syncGpxTerrainRuntime
+    events:
+      - plugs:loaded
+      - editor:pageLoaded

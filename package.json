@@ -1,9 +1,9 @@
 {
-  "name": "sb-3d-gpx",
+  "name": "cimal",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "npx plug-compile terrain-gpx.plug.yaml",
+    "build": "npx plug-compile cimal.plug.yaml",
     "format": "biome check --write src"
   },
   "dependencies": {

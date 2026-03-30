@@ -27,9 +27,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unknown error";
 		return {
-			url: buildViewerDataUrl(
-				buildError("GPX terrain preview failed", message),
-			),
+			url: buildViewerDataUrl(buildError("Cimal preview failed", message)),
 			width: 960,
 			height: 340,
 		};

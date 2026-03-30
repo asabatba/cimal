@@ -1,7 +1,7 @@
 ---
-name: Library/terrain-gpx/PLUG
+name: Library/cimal/PLUG
 tags: meta/library
 files:
-- terrain-gpx.plug.js
+- cimal.plug.js
 ---
-Render a remote GPX file on top of a Three.js 3D terrain preview generated from Copernicus 30 m DEM tiles.
+Render a GPX file on top of a Three.js 3D terrain preview generated from Copernicus 30 m DEM tiles.

@@ -15,10 +15,10 @@ export async function insertGpxTerrainBlock(): Promise<void> {
 	const gpxUrl = normalizeGpxUrl(response);
 	await editor.insertAtCursor(buildWidgetSnippet(gpxUrl), true);
 	await codeWidget.refreshAll();
-	await editor.flashNotification("Inserted GPX terrain widget.");
+	await editor.flashNotification("Inserted cimal widget.");
 }
 
 export async function refreshGpxTerrainWidgets(): Promise<void> {
 	await codeWidget.refreshAll();
-	await editor.flashNotification("Refreshed GPX terrain widgets.");
+	await editor.flashNotification("Refreshed cimal widgets.");
 }
