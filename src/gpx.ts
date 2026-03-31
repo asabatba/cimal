@@ -56,7 +56,7 @@ function isRemoteUrl(source: string): boolean {
 	return /^https?:\/\//i.test(source);
 }
 
-async function readGpxXml(source: string): Promise<string> {
+export async function readGpxXml(source: string): Promise<string> {
 	if (isRemoteUrl(source)) {
 		const response = await fetch(source);
 		if (!response.ok) {
@@ -80,8 +80,7 @@ async function readGpxXml(source: string): Promise<string> {
 	throw new Error(`GPX file not found in space: ${source}`);
 }
 
-export async function fetchTrackData(gpxSource: string): Promise<TrackData> {
-	const xml = await readGpxXml(gpxSource);
+export function parseTrackData(gpxSource: string, xml: string): TrackData {
 	const parsed = parser.parse(xml);
 	const gpxRoot = parsed.gpx ?? parsed;
 	const points = extractTrackPoints(gpxRoot);
@@ -118,4 +117,9 @@ export async function fetchTrackData(gpxSource: string): Promise<TrackData> {
 		totalAscent,
 		totalDescent,
 	};
+}
+
+export async function fetchTrackData(gpxSource: string): Promise<TrackData> {
+	const xml = await readGpxXml(gpxSource);
+	return parseTrackData(gpxSource, xml);
 }

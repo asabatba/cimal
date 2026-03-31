@@ -1,7 +1,14 @@
 import { space } from "@silverbulletmd/silverbullet/syscalls";
+import {
+	buildCimalPackCacheKey,
+	buildPackedCimalCacheEntry,
+	getCachedPack,
+	putCachedPack,
+} from "./cache.ts";
+import { readGpxXml } from "./gpx.ts";
 import { extractGpxSource, extractPackPath } from "./input.ts";
-import { decodeTerrainPack } from "./pack.ts";
-import { buildTerrainPayload } from "./terrain.ts";
+import { decodeTerrainPack, encodeTerrainPack } from "./pack.ts";
+import { buildTerrainPayloadFromGpxXml } from "./terrain.ts";
 import type { ErrorPayload } from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
 
@@ -18,6 +25,8 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	width: number;
 	height: number;
 }> {
+	let primaryError: unknown = null;
+
 	try {
 		const packPath = extractPackPath(bodyText);
 		const packed = await space.readFile(packPath);
@@ -28,21 +37,30 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 			height: 600,
 		};
 	} catch (error) {
+		primaryError = error;
 		try {
 			const gpxSource = extractGpxSource(bodyText);
-			const payload = await buildTerrainPayload(gpxSource);
-			payload.warning =
-				"Loaded directly from GPX without a .cimal pack. This fallback is slower; build a pack for fast repeat loads.";
+			const xml = await readGpxXml(gpxSource);
+			const cacheKey = buildCimalPackCacheKey(gpxSource, xml);
+			let packed = await getCachedPack(cacheKey);
+			if (!packed) {
+				const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml);
+				packed = encodeTerrainPack(payload);
+				const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
+				await putCachedPack(cacheEntry.key, cacheEntry.path, packed);
+			}
+			const payload = decodeTerrainPack(packed);
 			return {
 				url: buildViewerDataUrl(payload),
 				width: 960,
 				height: 600,
 			};
-		} catch {
-			// Fall through to pack-oriented error below.
+		} catch (gpxError) {
+			primaryError = gpxError;
 		}
 
-		const message = error instanceof Error ? error.message : "Unknown error";
+		const message =
+			primaryError instanceof Error ? primaryError.message : "Unknown error";
 		return {
 			url: buildViewerDataUrl(buildError("Cimal pack preview failed", message)),
 			width: 960,

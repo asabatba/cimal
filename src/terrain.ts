@@ -6,7 +6,7 @@ import {
 	MIN_PADDING_METERS,
 } from "./constants.ts";
 import { enumerateTiles, loadTile, sampleElevation } from "./copernicus.ts";
-import { fetchTrackData } from "./gpx.ts";
+import { fetchTrackData, parseTrackData } from "./gpx.ts";
 import {
 	boundsHeight,
 	boundsWidth,
@@ -187,10 +187,10 @@ function computeTrackElevationStats(points: LocalPoint[]): {
 	};
 }
 
-export async function buildTerrainPayload(
-	gpxUrl: string,
+export async function buildTerrainPayloadFromTrackData(
+	track: Awaited<ReturnType<typeof fetchTrackData>>,
 ): Promise<TerrainPayload> {
-	const track = await fetchTrackData(gpxUrl);
+	const gpxUrl = track.sourceUrl;
 	const paddedBounds = padTrackBounds(track.bounds, track.distanceMeters);
 	const center = getBoundsCenter(paddedBounds);
 	const metersPerDegree = metersPerDegreeAtLatitude(center.lat);
@@ -281,4 +281,18 @@ export async function buildTerrainPayload(
 			tileCount: loadedTiles.length,
 		},
 	};
+}
+
+export async function buildTerrainPayload(
+	gpxUrl: string,
+): Promise<TerrainPayload> {
+	const track = await fetchTrackData(gpxUrl);
+	return buildTerrainPayloadFromTrackData(track);
+}
+
+export async function buildTerrainPayloadFromGpxXml(
+	gpxUrl: string,
+	xml: string,
+): Promise<TerrainPayload> {
+	return buildTerrainPayloadFromTrackData(parseTrackData(gpxUrl, xml));
 }

@@ -20,6 +20,10 @@ export const TERRAIN_CACHE_VERSION = 2;
 export const TERRAIN_CACHE_ROOT = "Library/.cache/cimal";
 export const TERRAIN_CACHE_INDEX_PATH = `${TERRAIN_CACHE_ROOT}/v${TERRAIN_CACHE_VERSION}/index.json`;
 export const TERRAIN_CACHE_MAX_BYTES = 250 * 1024 * 1024;
+export const CIMAL_PACK_CACHE_VERSION = 1;
+export const CIMAL_PACK_CACHE_ROOT = `${TERRAIN_CACHE_ROOT}/packs`;
+export const CIMAL_PACK_CACHE_INDEX_PATH = `${CIMAL_PACK_CACHE_ROOT}/v${CIMAL_PACK_CACHE_VERSION}/index.json`;
+export const CIMAL_PACK_CACHE_MAX_BYTES = 100 * 1024 * 1024;
 
 export const DEFAULT_BOUNDS: GeoBounds = {
 	minLat: 0,

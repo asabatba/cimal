@@ -1,5 +1,9 @@
 import { editor, space } from "@silverbulletmd/silverbullet/syscalls";
 import {
+	CIMAL_PACK_CACHE_INDEX_PATH,
+	CIMAL_PACK_CACHE_MAX_BYTES,
+	CIMAL_PACK_CACHE_ROOT,
+	CIMAL_PACK_CACHE_VERSION,
 	TERRAIN_CACHE_INDEX_PATH,
 	TERRAIN_CACHE_MAX_BYTES,
 	TERRAIN_CACHE_ROOT,
@@ -15,11 +19,13 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TILE_MAGIC = "TGPC";
 const memoryTileCache = new Map<string, SampledTile>();
+const memoryPackCache = new Map<string, Uint8Array>();
 let memoryIndexCache: TerrainCacheIndex | null = null;
+let memoryPackIndexCache: TerrainCacheIndex | null = null;
 
-function createEmptyIndex(): TerrainCacheIndex {
+function createEmptyIndex(version: number): TerrainCacheIndex {
 	return {
-		version: TERRAIN_CACHE_VERSION,
+		version,
 		entries: {},
 	};
 }
@@ -125,7 +131,7 @@ async function loadIndex(): Promise<TerrainCacheIndex> {
 	}
 
 	if (!(await space.fileExists(TERRAIN_CACHE_INDEX_PATH))) {
-		memoryIndexCache = createEmptyIndex();
+		memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
 		return memoryIndexCache;
 	}
 
@@ -133,21 +139,54 @@ async function loadIndex(): Promise<TerrainCacheIndex> {
 		const data = await space.readFile(TERRAIN_CACHE_INDEX_PATH);
 		const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
 		if (parsed.version !== TERRAIN_CACHE_VERSION || !parsed.entries) {
-			memoryIndexCache = createEmptyIndex();
+			memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
 		} else {
 			memoryIndexCache = parsed;
 		}
 	} catch {
-		memoryIndexCache = createEmptyIndex();
+		memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
 	}
 
 	return memoryIndexCache;
+}
+
+async function loadPackIndex(): Promise<TerrainCacheIndex> {
+	if (memoryPackIndexCache) {
+		return memoryPackIndexCache;
+	}
+
+	if (!(await space.fileExists(CIMAL_PACK_CACHE_INDEX_PATH))) {
+		memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
+		return memoryPackIndexCache;
+	}
+
+	try {
+		const data = await space.readFile(CIMAL_PACK_CACHE_INDEX_PATH);
+		const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
+		if (parsed.version !== CIMAL_PACK_CACHE_VERSION || !parsed.entries) {
+			memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
+		} else {
+			memoryPackIndexCache = parsed;
+		}
+	} catch {
+		memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
+	}
+
+	return memoryPackIndexCache;
 }
 
 async function persistIndex(index: TerrainCacheIndex): Promise<void> {
 	memoryIndexCache = index;
 	await space.writeFile(
 		TERRAIN_CACHE_INDEX_PATH,
+		encoder.encode(JSON.stringify(index)),
+	);
+}
+
+async function persistPackIndex(index: TerrainCacheIndex): Promise<void> {
+	memoryPackIndexCache = index;
+	await space.writeFile(
+		CIMAL_PACK_CACHE_INDEX_PATH,
 		encoder.encode(JSON.stringify(index)),
 	);
 }
@@ -189,6 +228,36 @@ async function enforceCacheLimit(index: TerrainCacheIndex): Promise<void> {
 	}
 }
 
+async function deletePackCacheEntry(
+	index: TerrainCacheIndex,
+	entry: TerrainCacheIndexEntry,
+): Promise<void> {
+	memoryPackCache.delete(entry.key);
+	delete index.entries[entry.key];
+	if (await space.fileExists(entry.path)) {
+		await space.deleteFile(entry.path);
+	}
+}
+
+async function enforcePackCacheLimit(index: TerrainCacheIndex): Promise<void> {
+	let currentBytes = totalCacheBytes(index);
+	if (currentBytes <= CIMAL_PACK_CACHE_MAX_BYTES) {
+		return;
+	}
+
+	const entries = Object.values(index.entries).sort(
+		(left, right) => left.lastUsed - right.lastUsed,
+	);
+
+	for (const entry of entries) {
+		await deletePackCacheEntry(index, entry);
+		currentBytes -= entry.size;
+		if (currentBytes <= CIMAL_PACK_CACHE_MAX_BYTES) {
+			break;
+		}
+	}
+}
+
 export function buildSampledTileCacheEntry(
 	key: string,
 	tileId: string,
@@ -198,6 +267,20 @@ export function buildSampledTileCacheEntry(
 	return {
 		key,
 		path: `${TERRAIN_CACHE_ROOT}/v${TERRAIN_CACHE_VERSION}/${fileName}`,
+	};
+}
+
+export function buildPackedCimalCacheEntry(
+	key: string,
+	source: string,
+): { key: string; path: string } {
+	const safeSource = sanitizePathPart(
+		source.split(/[\\/]/).filter(Boolean).pop() || "track",
+	).replace(/(?:\.gpx)?$/i, "");
+	const fileName = `${safeSource || "track"}-${djb2Hash(key)}.cimal`;
+	return {
+		key,
+		path: `${CIMAL_PACK_CACHE_ROOT}/v${CIMAL_PACK_CACHE_VERSION}/${fileName}`,
 	};
 }
 
@@ -253,6 +336,55 @@ export async function putCachedTile(
 	await persistIndex(index);
 }
 
+export async function getCachedPack(key: string): Promise<Uint8Array | null> {
+	const memoryCachedPack = memoryPackCache.get(key);
+	if (memoryCachedPack) {
+		return memoryCachedPack;
+	}
+
+	const index = await loadPackIndex();
+	const entry = index.entries[key];
+	if (!entry) {
+		return null;
+	}
+
+	if (!(await space.fileExists(entry.path))) {
+		delete index.entries[key];
+		await persistPackIndex(index);
+		return null;
+	}
+
+	try {
+		const packed = await space.readFile(entry.path);
+		memoryPackCache.set(key, packed);
+		entry.lastUsed = Date.now();
+		await persistPackIndex(index);
+		return packed;
+	} catch {
+		await deletePackCacheEntry(index, entry);
+		await persistPackIndex(index);
+		return null;
+	}
+}
+
+export async function putCachedPack(
+	key: string,
+	path: string,
+	packed: Uint8Array,
+): Promise<void> {
+	const index = await loadPackIndex();
+	memoryPackCache.set(key, packed);
+	await space.writeFile(path, packed);
+	index.entries[key] = {
+		key,
+		path,
+		size: packed.byteLength,
+		lastUsed: Date.now(),
+	};
+	await enforcePackCacheLimit(index);
+	await persistPackIndex(index);
+}
+
 export async function clearTerrainCache(): Promise<number> {
 	const index = await loadIndex();
 	const entries = Object.values(index.entries);
@@ -264,18 +396,32 @@ export async function clearTerrainCache(): Promise<number> {
 	if (await space.fileExists(TERRAIN_CACHE_INDEX_PATH)) {
 		await space.deleteFile(TERRAIN_CACHE_INDEX_PATH);
 	}
+	const packIndex = await loadPackIndex();
+	const packEntries = Object.values(packIndex.entries);
+	for (const entry of packEntries) {
+		if (await space.fileExists(entry.path)) {
+			await space.deleteFile(entry.path);
+		}
+	}
+	if (await space.fileExists(CIMAL_PACK_CACHE_INDEX_PATH)) {
+		await space.deleteFile(CIMAL_PACK_CACHE_INDEX_PATH);
+	}
 	memoryTileCache.clear();
-	memoryIndexCache = createEmptyIndex();
-	return entries.length;
+	memoryPackCache.clear();
+	memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
+	memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
+	return entries.length + packEntries.length;
 }
 
 export async function showTerrainCacheStats(): Promise<void> {
 	const index = await loadIndex();
 	const entries = Object.values(index.entries);
-	const totalBytes = totalCacheBytes(index);
+	const packIndex = await loadPackIndex();
+	const packEntries = Object.values(packIndex.entries);
+	const totalBytes = totalCacheBytes(index) + totalCacheBytes(packIndex);
 	const totalMegabytes = (totalBytes / (1024 * 1024)).toFixed(1);
 	await editor.flashNotification(
-		`Terrain cache: ${entries.length} tile samples, ${totalMegabytes} MB`,
+		`Terrain cache: ${entries.length} tile samples, ${packEntries.length} .cimal packs, ${totalMegabytes} MB`,
 	);
 }
 
@@ -293,4 +439,8 @@ export function buildTileSampleCacheKey(
 		height,
 		"bilinear",
 	].join("|");
+}
+
+export function buildCimalPackCacheKey(source: string, xml: string): string {
+	return [`v${CIMAL_PACK_CACHE_VERSION}`, source, djb2Hash(xml)].join("|");
 }
