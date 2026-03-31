@@ -7,6 +7,10 @@ const PACK_MAGIC = "CMLP";
 const PACK_PREAMBLE_BYTES = 12;
 const UINT16_MAX = 65535;
 
+function align4(n: number): number {
+	return (n + 3) & ~3;
+}
+
 function encodeHeader(payload: TerrainPayload): Uint8Array {
 	const header: CimalPackHeader = {
 		version: CIMAL_PACK_VERSION,
@@ -69,12 +73,14 @@ function toByteView(values: Uint16Array | Float32Array): Uint8Array {
 
 export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 	const headerBytes = encodeHeader(payload);
+	const headerPaddedLength = align4(headerBytes.length);
 	const gridBytes = toByteView(quantizeGrid(payload));
+	const gridPaddedLength = align4(gridBytes.length);
 	const trackBytes = toByteView(encodeTrack(payload.track));
 	const output = new Uint8Array(
 		PACK_PREAMBLE_BYTES +
-			headerBytes.length +
-			gridBytes.length +
+			headerPaddedLength +
+			gridPaddedLength +
 			trackBytes.length,
 	);
 	output.set(encoder.encode(PACK_MAGIC), 0);
@@ -86,9 +92,9 @@ export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 
 	let offset = PACK_PREAMBLE_BYTES;
 	output.set(headerBytes, offset);
-	offset += headerBytes.length;
+	offset += headerPaddedLength;
 	output.set(gridBytes, offset);
-	offset += gridBytes.length;
+	offset += gridPaddedLength;
 	output.set(trackBytes, offset);
 
 	return output;
@@ -124,7 +130,7 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 	) as CimalPackHeader;
 	const gridValueCount = header.grid.width * header.grid.height;
 	const gridByteLength = gridValueCount * Uint16Array.BYTES_PER_ELEMENT;
-	const gridStart = headerEnd;
+	const gridStart = PACK_PREAMBLE_BYTES + align4(headerLength);
 	const gridEnd = gridStart + gridByteLength;
 	if (gridEnd > data.byteLength) {
 		throw new Error("Invalid .cimal pack: terrain section is truncated.");
@@ -132,17 +138,24 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 
 	const trackByteLength =
 		header.trackPointCount * 3 * Float32Array.BYTES_PER_ELEMENT;
-	const trackStart = gridEnd;
+	const trackStart = gridStart + align4(gridByteLength);
 	const trackEnd = trackStart + trackByteLength;
 	if (trackEnd > data.byteLength) {
 		throw new Error("Invalid .cimal pack: track section is truncated.");
 	}
 
+	// Zero-copy views: gridStart and trackStart are always 4-aligned (preamble is
+	// 12 bytes, both padded lengths are multiples of 4), and data.byteOffset is 0
+	// for files read via space.readFile.
 	const quantizedGrid = new Uint16Array(
-		data.buffer.slice(data.byteOffset + gridStart, data.byteOffset + gridEnd),
+		data.buffer,
+		data.byteOffset + gridStart,
+		gridValueCount,
 	);
 	const trackValues = new Float32Array(
-		data.buffer.slice(data.byteOffset + trackStart, data.byteOffset + trackEnd),
+		data.buffer,
+		data.byteOffset + trackStart,
+		header.trackPointCount * 3,
 	);
 	const range = header.grid.maxElevation - header.grid.minElevation;
 	const elevations = Array.from(quantizedGrid, (value) =>
