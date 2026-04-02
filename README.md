@@ -11,6 +11,7 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Supports three per-widget visual styles: `classic`, `hiking-map`, and `vaporwave`.
 - Overlays OpenHikingMap raster tiles on the 3D terrain surface when `style: hiking-map` is selected.
 - Falls back to classic elevation-based terrain shading if external imagery tiles are unavailable.
+- Highlights likely water bodies in blue in the `classic` and `vaporwave` styles using DEM-based detection.
 - Renders the route as an interactive Three.js scene with orbit controls and basic route stats.
 
 ## Usage
@@ -59,6 +60,8 @@ The build step fetches the GPX, derives a padded bounding box around the route, 
 The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
 
 At render time, the iframe viewer only fetches live OpenHikingMap raster imagery for `style: hiking-map`. The `.cimal` pack still only stores terrain and track data, and the viewer falls back to the built-in classic relief tint if those tile requests fail.
+
+The shaded styles (`classic` and `vaporwave`) also apply a heuristic water-body detector that looks for large contiguous flat plateaus in the DEM and paints them blue. This is intentionally conservative and may miss some smaller lakes or reservoirs rather than over-painting terraces and other flat terrain. The `hiking-map` style does not add this synthetic blue overlay.
 
 If a `cimal` widget contains a raw GPX URL or GPX space path, Cimal now builds a `.cimal` pack automatically and caches it under `Library/.cache/cimal/packs/`. The cache key includes the GPX content hash, so editing a space GPX file produces a fresh cached pack.
 

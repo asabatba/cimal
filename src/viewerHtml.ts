@@ -235,6 +235,7 @@ export function buildViewerDataUrl(
           },
           styleDescription: "Style: Classic relief tint.",
           useHikingMap: false,
+          useWaterTint: true,
           fogColor: 0x102029,
           hemisphereSky: 0xdaf2ff,
           hemisphereGround: 0x1b272b,
@@ -248,6 +249,8 @@ export function buildViewerDataUrl(
             { t: 0.78, color: 0x757982 },
             { t: 1.0, color: 0xe6e2d9 },
           ],
+          waterColorLow: 0x1e5a85,
+          waterColorHigh: 0x5dbaf2,
           sideColor: 0x544d42,
           bottomColor: 0x403a31,
           terrainRoughness: 0.94,
@@ -273,6 +276,7 @@ export function buildViewerDataUrl(
           },
           styleDescription: "Imagery: loading OpenHikingMap overlay.",
           useHikingMap: true,
+          useWaterTint: false,
           fogColor: 0x112326,
           hemisphereSky: 0xe0f0f6,
           hemisphereGround: 0x22302b,
@@ -286,6 +290,8 @@ export function buildViewerDataUrl(
             { t: 0.78, color: 0x757982 },
             { t: 1.0, color: 0xe6e2d9 },
           ],
+          waterColorLow: 0x1e5a85,
+          waterColorHigh: 0x5dbaf2,
           sideColor: 0x544d42,
           bottomColor: 0x403a31,
           terrainRoughness: 0.94,
@@ -311,6 +317,7 @@ export function buildViewerDataUrl(
           },
           styleDescription: "Style: Vaporwave flavour.",
           useHikingMap: false,
+          useWaterTint: true,
           fogColor: 0x1b0b2f,
           hemisphereSky: 0x8acfff,
           hemisphereGround: 0x25083b,
@@ -324,6 +331,8 @@ export function buildViewerDataUrl(
             { t: 0.76, color: 0xffa26b },
             { t: 1.0, color: 0x7efcff },
           ],
+          waterColorLow: 0x187bff,
+          waterColorHigh: 0x72f7ff,
           sideColor: 0x31164f,
           bottomColor: 0x190826,
           terrainRoughness: 0.86,
@@ -621,6 +630,140 @@ export function buildViewerDataUrl(
           }
 
           return terrainStops[terrainStops.length - 1].color.clone();
+        }
+
+        const waterLowColor = new THREE.Color(activeTheme.waterColorLow);
+        const waterHighColor = new THREE.Color(activeTheme.waterColorHigh);
+        const WATER_NEIGHBOR_TOLERANCE = 0.8;
+        const WATER_COMPONENT_RANGE_MAX = 1.2;
+        const WATER_MIN_COMPONENT_CELLS = 36;
+        const WATER_MIN_COMPONENT_RATIO = 0.015;
+
+        function sampleWaterColor(normalized) {
+          const waterT = THREE.MathUtils.smoothstep(normalized, 0, 1);
+          return waterLowColor.clone().lerp(waterHighColor, waterT);
+        }
+
+        function sampleSurfaceColor(normalized, isWater) {
+          if (isWater && activeTheme.useWaterTint) {
+            return sampleWaterColor(normalized);
+          }
+
+          return sampleTerrainColor(Math.pow(normalized, 0.92));
+        }
+
+        function detectWaterMask(width, height, elevations) {
+          const cellCount = width * height;
+          const waterMask = new Uint8Array(cellCount);
+          if (!activeTheme.useWaterTint || cellCount === 0) {
+            return waterMask;
+          }
+
+          const visited = new Uint8Array(cellCount);
+          const minComponentSize = Math.max(
+            WATER_MIN_COMPONENT_CELLS,
+            Math.ceil(cellCount * WATER_MIN_COMPONENT_RATIO),
+          );
+
+          function maybeVisitNeighbor(
+            currentIndex,
+            neighborIndex,
+            queue,
+            component,
+            componentState,
+          ) {
+            if (visited[neighborIndex]) {
+              return;
+            }
+
+            const currentElevation = elevations[currentIndex];
+            const neighborElevation = elevations[neighborIndex];
+            if (
+              Math.abs(neighborElevation - currentElevation) > WATER_NEIGHBOR_TOLERANCE
+            ) {
+              return;
+            }
+
+            const nextMinElevation = Math.min(componentState.minElevation, neighborElevation);
+            const nextMaxElevation = Math.max(componentState.maxElevation, neighborElevation);
+            if (nextMaxElevation - nextMinElevation > WATER_COMPONENT_RANGE_MAX) {
+              return;
+            }
+
+            visited[neighborIndex] = 1;
+            queue.push(neighborIndex);
+            component.push(neighborIndex);
+            componentState.minElevation = nextMinElevation;
+            componentState.maxElevation = nextMaxElevation;
+          }
+
+          for (let startIndex = 0; startIndex < cellCount; startIndex += 1) {
+            if (visited[startIndex]) {
+              continue;
+            }
+
+            visited[startIndex] = 1;
+            const component = [startIndex];
+            const queue = [startIndex];
+            const componentState = {
+              minElevation: elevations[startIndex],
+              maxElevation: elevations[startIndex],
+            };
+
+            while (queue.length > 0) {
+              const currentIndex = queue.pop();
+              const row = Math.floor(currentIndex / width);
+              const column = currentIndex % width;
+
+              if (column > 0) {
+                maybeVisitNeighbor(
+                  currentIndex,
+                  currentIndex - 1,
+                  queue,
+                  component,
+                  componentState,
+                );
+              }
+              if (column < width - 1) {
+                maybeVisitNeighbor(
+                  currentIndex,
+                  currentIndex + 1,
+                  queue,
+                  component,
+                  componentState,
+                );
+              }
+              if (row > 0) {
+                maybeVisitNeighbor(
+                  currentIndex,
+                  currentIndex - width,
+                  queue,
+                  component,
+                  componentState,
+                );
+              }
+              if (row < height - 1) {
+                maybeVisitNeighbor(
+                  currentIndex,
+                  currentIndex + width,
+                  queue,
+                  component,
+                  componentState,
+                );
+              }
+            }
+
+            if (
+              component.length >= minComponentSize &&
+              componentState.maxElevation - componentState.minElevation <= WATER_COMPONENT_RANGE_MAX
+            ) {
+              for (const index of component) {
+                waterMask[index] = 1;
+              }
+            }
+          }
+
+          return waterMask;
         }
 
         const OPEN_HIKING_TILE_URL = "https://tile.openmaps.fr/openhikingmap/{z}/{x}/{y}.png";
@@ -932,6 +1075,11 @@ export function buildViewerDataUrl(
         const hikingTextureBlendColors = new Float32Array(vertexCount * 3);
         const uvs = new Float32Array(vertexCount * 2);
         const indices = [];
+        const waterMask = detectWaterMask(
+          grid.width,
+          grid.height,
+          grid.elevations,
+        );
 
         let pointer = 0;
         let uvPointer = 0;
@@ -949,7 +1097,10 @@ export function buildViewerDataUrl(
             positions[pointer + 1] = y;
             positions[pointer + 2] = z;
 
-            const fallbackColor = sampleTerrainColor(Math.pow(normalized, 0.92));
+            const fallbackColor = sampleSurfaceColor(
+              normalized,
+              waterMask[row * grid.width + column] === 1,
+            );
             terrainColors[pointer] = fallbackColor.r;
             terrainColors[pointer + 1] = fallbackColor.g;
             terrainColors[pointer + 2] = fallbackColor.b;
