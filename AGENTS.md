@@ -8,6 +8,8 @@ This repository contains the `cimal` SilverBullet plug. It builds and renders `.
 
 - `src/` contains the TypeScript source.
 - `src/index.ts` is the plug entrypoint referenced by `cimal.plug.yaml`.
+- `src/viewer/` contains the authored iframe viewer source.
+- `src/generated/viewerBundle.ts` is a generated module produced from `src/viewer/`.
 - `cimal.plug.yaml` defines commands, slash commands, widget registration, and lifecycle hooks.
 - `cimal.plug.js` and `cimal.plug.js.map` are generated build artifacts.
 - `PLUG.md` is the SilverBullet plug manifest page.
@@ -16,6 +18,7 @@ This repository contains the `cimal` SilverBullet plug. It builds and renders `.
 ## Working Rules
 
 - Prefer targeted edits inside `src/`; avoid editing generated bundle files by hand.
+- Treat `src/generated/viewerBundle.ts` as generated output; regenerate it instead of editing it manually.
 - Treat `cimal.plug.js` and `cimal.plug.js.map` as build outputs. Regenerate them with the build step after source changes.
 - Preserve the existing module split. This repo already separates GPX parsing, DEM loading, pack encoding/decoding, runtime hooks, and viewer HTML.
 - Keep changes consistent with the SilverBullet plug model declared in `cimal.plug.yaml`.
@@ -24,12 +27,14 @@ This repository contains the `cimal` SilverBullet plug. It builds and renders `.
 ## Commands
 
 - Install dependencies: `pnpm install`
+- Regenerate the embedded viewer bundle: `pnpm run build:viewer`
 - Build the plug: `pnpm run build`
 - Format checked files in `src/`: `pnpm run format`
 
 ## Validation
 
 - After code changes, run `pnpm run build`.
+- If you changed `src/viewer/`, ensure `pnpm run build:viewer` has regenerated `src/generated/viewerBundle.ts`.
 - If formatting is affected, run `pnpm run format`.
 - There is currently no dedicated automated test suite in this repo, so build success is the primary validation unless you add tests.
 
