@@ -118,7 +118,9 @@ body {
 	font-size: 0.5rem;
 	line-height: 1.4;
 	color: var(--muted);
-	transition: width 0.3s ease, max-width 0.3s ease;
+	transition:
+		width 0.3s ease,
+		max-width 0.3s ease;
 	overflow: hidden;
 }
 

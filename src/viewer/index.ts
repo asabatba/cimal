@@ -288,7 +288,11 @@ async function renderTerrainViewer(
 	camera.position.set(spanX * 0.6, Math.max(spanX, spanZ) * 0.45, spanZ * 0.8);
 
 	const controls = new OrbitControls(camera, canvas);
-	controls.enableDamping = true;
+	controls.enableDamping = false;
+	controls.rotateSpeed = 0.9;
+	controls.zoomSpeed = 1;
+	controls.panSpeed = 0.9;
+	controls.screenSpacePanning = false;
 	controls.target.set(0, elevationRange * exaggeration * 0.18, 0);
 	controls.keyPanSpeed = Math.max(20, Math.min(spanX, spanZ) * 0.03);
 	const pressedKeys = new Set<string>();

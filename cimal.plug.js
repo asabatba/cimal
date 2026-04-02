@@ -136,7 +136,9 @@ body {
 	font-size: 0.5rem;
 	line-height: 1.4;
 	color: var(--muted);
-	transition: width 0.3s ease, max-width 0.3s ease;
+	transition:
+		width 0.3s ease,
+		max-width 0.3s ease;
 	overflow: hidden;
 }
 
@@ -453,7 +455,11 @@ async function renderTerrainViewer(payload2, activeTheme2) {
   const camera = new THREE.PerspectiveCamera(52, 1, 1, 2e5);
   camera.position.set(spanX * 0.6, Math.max(spanX, spanZ) * 0.45, spanZ * 0.8);
   const controls = new OrbitControls(camera, canvas);
-  controls.enableDamping = true;
+  controls.enableDamping = false;
+  controls.rotateSpeed = 0.9;
+  controls.zoomSpeed = 1;
+  controls.panSpeed = 0.9;
+  controls.screenSpacePanning = false;
   controls.target.set(0, elevationRange * exaggeration * 0.18, 0);
   controls.keyPanSpeed = Math.max(20, Math.min(spanX, spanZ) * 0.03);
   const pressedKeys = /* @__PURE__ */ new Set();
