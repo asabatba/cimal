@@ -7,12 +7,12 @@
     "format": "biome check --write src"
   },
   "dependencies": {
-    "@silverbulletmd/silverbullet": ">=2.5.3",
-    "fast-xml-parser": "^5.3.1",
-    "geotiff": "^2.1.4-beta.0",
-    "three": "^0.180.0"
+    "@silverbulletmd/silverbullet": "^2.5.3",
+    "fast-xml-parser": "^5.5.9",
+    "geotiff": "^3.0.5",
+    "three": "^0.183.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9"
+    "@biomejs/biome": "^2.4.10"
   }
 }

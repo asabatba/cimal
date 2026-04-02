@@ -147,6 +147,10 @@ export function buildViewerDataUrl(
         color: var(--accent-soft);
       }
 
+      .attribution p {
+        margin: 0;
+      }
+
       .error-shell {
         min-height: 100vh;
         display: grid;
@@ -265,13 +269,15 @@ export function buildViewerDataUrl(
             </div>-->
           </aside>
           \${warning ? \`<aside class="warning">\${escapeText(warning)}</aside>\` : ""}
-          <footer class="attribution" style="display: none;">
-            Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.
-            Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.
+          <footer class="attribution">
+            <p id="imagery-attribution">Imagery: loading OpenHikingMap overlay.</p>
+            <p>Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.</p>
+            <p>Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.</p>
           </footer>
         \`;
 
         const canvas = document.getElementById("scene");
+        const imageryAttribution = document.getElementById("imagery-attribution");
         canvas.tabIndex = 0;
         canvas.setAttribute("aria-label", "3D terrain map");
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -489,6 +495,166 @@ export function buildViewerDataUrl(
           return terrainStops[terrainStops.length - 1].color.clone();
         }
 
+        const OPEN_HIKING_TILE_URL = "https://tile.openmaps.fr/openhikingmap/{z}/{x}/{y}.png";
+        const OPEN_HIKING_ATTRIBUTION = 'Imagery: <a href="https://tile.openmaps.fr/" target="_blank" rel="noreferrer">OpenHikingMap</a> with <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> data.';
+        const OPEN_HIKING_FALLBACK = "Imagery unavailable; showing elevation shading only.";
+        const TILE_SIZE = 256;
+        const INITIAL_TILE_ZOOM = 12;
+        const MIN_TILE_ZOOM = 6;
+        const MAX_TILE_REQUESTS = 24;
+        const MAX_TEXTURE_DIMENSION = 4096;
+
+        function clampLatitude(latitude) {
+          return THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
+        }
+
+        function longitudeToTileX(longitude, zoom) {
+          return ((longitude + 180) / 360) * (2 ** zoom);
+        }
+
+        function latitudeToTileY(latitude, zoom) {
+          const radians = THREE.MathUtils.degToRad(clampLatitude(latitude));
+          return (
+            (1 - Math.log(Math.tan(radians) + (1 / Math.cos(radians))) / Math.PI) /
+            2
+          ) * (2 ** zoom);
+        }
+
+        function buildTileCoverage(targetBounds, zoom) {
+          const west = longitudeToTileX(targetBounds.minLon, zoom);
+          const east = longitudeToTileX(targetBounds.maxLon, zoom);
+          const north = latitudeToTileY(targetBounds.maxLat, zoom);
+          const south = latitudeToTileY(targetBounds.minLat, zoom);
+          const tileXStart = Math.floor(west);
+          const tileXEnd = Math.max(tileXStart, Math.ceil(east) - 1);
+          const tileYStart = Math.floor(north);
+          const tileYEnd = Math.max(tileYStart, Math.ceil(south) - 1);
+          return {
+            zoom,
+            west,
+            east,
+            north,
+            south,
+            tileXStart,
+            tileXEnd,
+            tileYStart,
+            tileYEnd,
+            tileCount: (tileXEnd - tileXStart + 1) * (tileYEnd - tileYStart + 1),
+          };
+        }
+
+        function pickTileCoverage(targetBounds) {
+          let fallback = buildTileCoverage(targetBounds, MIN_TILE_ZOOM);
+
+          for (let zoom = INITIAL_TILE_ZOOM; zoom >= MIN_TILE_ZOOM; zoom -= 1) {
+            const coverage = buildTileCoverage(targetBounds, zoom);
+            if (coverage.tileCount <= MAX_TILE_REQUESTS) {
+              return coverage;
+            }
+            fallback = coverage;
+          }
+
+          return fallback;
+        }
+
+        function loadTileImage(url) {
+          return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.crossOrigin = "anonymous";
+            image.decoding = "async";
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error(\`Failed to load raster tile \${url}\`));
+            image.src = url;
+          });
+        }
+
+        async function buildOpenHikingTexture() {
+          const coverage = pickTileCoverage(bounds);
+          const worldTileCount = 2 ** coverage.zoom;
+          const tileColumns = coverage.tileXEnd - coverage.tileXStart + 1;
+          const tileRows = coverage.tileYEnd - coverage.tileYStart + 1;
+          const stitchedCanvas = document.createElement("canvas");
+          stitchedCanvas.width = tileColumns * TILE_SIZE;
+          stitchedCanvas.height = tileRows * TILE_SIZE;
+          const stitchedContext = stitchedCanvas.getContext("2d");
+
+          if (!stitchedContext) {
+            throw new Error("Unable to create raster tile canvas.");
+          }
+
+          const tileRequests = [];
+          for (let tileY = coverage.tileYStart; tileY <= coverage.tileYEnd; tileY += 1) {
+            for (let tileX = coverage.tileXStart; tileX <= coverage.tileXEnd; tileX += 1) {
+              const wrappedX = ((tileX % worldTileCount) + worldTileCount) % worldTileCount;
+              const clampedY = THREE.MathUtils.clamp(tileY, 0, worldTileCount - 1);
+              const url = OPEN_HIKING_TILE_URL
+                .replace("{z}", String(coverage.zoom))
+                .replace("{x}", String(wrappedX))
+                .replace("{y}", String(clampedY));
+              tileRequests.push(
+                loadTileImage(url).then((image) => ({
+                  image,
+                  tileX,
+                  tileY,
+                }))
+              );
+            }
+          }
+
+          const tiles = await Promise.all(tileRequests);
+          for (const tile of tiles) {
+            stitchedContext.drawImage(
+              tile.image,
+              (tile.tileX - coverage.tileXStart) * TILE_SIZE,
+              (tile.tileY - coverage.tileYStart) * TILE_SIZE,
+              TILE_SIZE,
+              TILE_SIZE,
+            );
+          }
+
+          const cropLeft = (coverage.west - coverage.tileXStart) * TILE_SIZE;
+          const cropTop = (coverage.north - coverage.tileYStart) * TILE_SIZE;
+          const cropWidth = Math.max(1, (coverage.east - coverage.west) * TILE_SIZE);
+          const cropHeight = Math.max(1, (coverage.south - coverage.north) * TILE_SIZE);
+          const textureScale = Math.min(
+            1,
+            MAX_TEXTURE_DIMENSION / Math.max(cropWidth, cropHeight),
+          );
+          const outputCanvas = document.createElement("canvas");
+          outputCanvas.width = Math.max(1, Math.round(cropWidth * textureScale));
+          outputCanvas.height = Math.max(1, Math.round(cropHeight * textureScale));
+          const outputContext = outputCanvas.getContext("2d");
+
+          if (!outputContext) {
+            throw new Error("Unable to create cropped tile canvas.");
+          }
+
+          outputContext.drawImage(
+            stitchedCanvas,
+            cropLeft,
+            cropTop,
+            cropWidth,
+            cropHeight,
+            0,
+            0,
+            outputCanvas.width,
+            outputCanvas.height,
+          );
+
+          const texture = new THREE.CanvasTexture(outputCanvas);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          texture.wrapS = THREE.ClampToEdgeWrapping;
+          texture.wrapT = THREE.ClampToEdgeWrapping;
+          texture.needsUpdate = true;
+
+          return {
+            texture,
+            zoom: coverage.zoom,
+            tileCount: coverage.tileCount,
+          };
+        }
+
         function buildTrackRibbon(points, width, heightOffset) {
           if (points.length < 2) {
             return null;
@@ -632,14 +798,19 @@ export function buildViewerDataUrl(
         const geometry = new THREE.BufferGeometry();
         const vertexCount = grid.width * grid.height;
         const positions = new Float32Array(vertexCount * 3);
-        const colors = new Float32Array(vertexCount * 3);
+        const fallbackColors = new Float32Array(vertexCount * 3);
+        const texturedColors = new Float32Array(vertexCount * 3);
+        const uvs = new Float32Array(vertexCount * 2);
         const indices = [];
 
         let pointer = 0;
+        let uvPointer = 0;
         for (let row = 0; row < grid.height; row += 1) {
-          const z = ((row / (grid.height - 1)) - 0.5) * spanZ;
+          const rowRatio = grid.height === 1 ? 0.5 : row / (grid.height - 1);
+          const z = (rowRatio - 0.5) * spanZ;
           for (let column = 0; column < grid.width; column += 1) {
-            const x = ((column / (grid.width - 1)) - 0.5) * spanX;
+            const columnRatio = grid.width === 1 ? 0.5 : column / (grid.width - 1);
+            const x = (columnRatio - 0.5) * spanX;
             const elevation = grid.elevations[row * grid.width + column];
             const normalized = (elevation - grid.minElevation) / elevationRange;
             const y = (elevation - grid.minElevation) * exaggeration;
@@ -648,12 +819,21 @@ export function buildViewerDataUrl(
             positions[pointer + 1] = y;
             positions[pointer + 2] = z;
 
-            const color = sampleTerrainColor(Math.pow(normalized, 0.92));
-            colors[pointer] = color.r;
-            colors[pointer + 1] = color.g;
-            colors[pointer + 2] = color.b;
+            const fallbackColor = sampleTerrainColor(Math.pow(normalized, 0.92));
+            fallbackColors[pointer] = fallbackColor.r;
+            fallbackColors[pointer + 1] = fallbackColor.g;
+            fallbackColors[pointer + 2] = fallbackColor.b;
+
+            const reliefShade = THREE.MathUtils.lerp(0.82, 0.98, Math.pow(normalized, 0.85));
+            texturedColors[pointer] = reliefShade;
+            texturedColors[pointer + 1] = reliefShade;
+            texturedColors[pointer + 2] = reliefShade;
+
+            uvs[uvPointer] = columnRatio;
+            uvs[uvPointer + 1] = 1 - rowRatio;
 
             pointer += 3;
+            uvPointer += 2;
           }
         }
 
@@ -670,7 +850,8 @@ export function buildViewerDataUrl(
 
         geometry.setIndex(indices);
         geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(fallbackColors, 3));
+        geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
         geometry.computeVertexNormals();
 
         const terrainMaterial = new THREE.MeshStandardMaterial({
@@ -711,6 +892,19 @@ export function buildViewerDataUrl(
 
         const terrain = new THREE.Mesh(geometry, terrainMaterial);
         scene.add(terrain);
+
+        buildOpenHikingTexture()
+          .then(({ texture, zoom, tileCount }) => {
+            geometry.setAttribute("color", new THREE.BufferAttribute(texturedColors, 3));
+            geometry.attributes.color.needsUpdate = true;
+            terrainMaterial.map = texture;
+            terrainMaterial.needsUpdate = true;
+            imageryAttribution.innerHTML = \`\${OPEN_HIKING_ATTRIBUTION} <span>Loaded \${tileCount} tiles at z\${zoom}.</span>\`;
+          })
+          .catch((error) => {
+            console.warn(error);
+            imageryAttribution.textContent = OPEN_HIKING_FALLBACK;
+          });
 
         const trackRibbonWidth = THREE.MathUtils.clamp(sceneSpan * 0.012, 14, 60);
         const trackHeightOffset = THREE.MathUtils.clamp(sceneSpan * 0.0035, 12, 24);
