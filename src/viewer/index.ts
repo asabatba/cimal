@@ -1,5 +1,11 @@
 import { COPERNICUS_S3_ROOT, THREE_JS_VERSION } from "../constants.ts";
-import type { ErrorPayload, TerrainPayload, ViewerStyle } from "../types.ts";
+import type {
+	ErrorPayload,
+	HikingMapResolution,
+	TerrainPayload,
+	ViewerConfig,
+	ViewerStyle,
+} from "../types.ts";
 
 type ViewerTheme = {
 	cssVars: Record<string, string>;
@@ -28,6 +34,13 @@ type ViewerTheme = {
 	ringOpacity: number;
 };
 
+type HikingMapTexturePreset = {
+	label: string;
+	initialZoom: number;
+	maxTileRequests: number;
+	maxTextureDimension: number;
+};
+
 function escapeText(value: string): string {
 	return String(value)
 		.replaceAll("&", "&amp;")
@@ -48,15 +61,23 @@ function requireElement<T extends Element>(
 }
 
 const payloadScript = requireElement("payload", HTMLScriptElement);
-const styleScript = requireElement("viewer-style", HTMLScriptElement);
+const viewerConfigScript = requireElement("viewer-config", HTMLScriptElement);
 const app = requireElement("app", HTMLDivElement);
 
 const payload = JSON.parse(payloadScript.textContent ?? "null") as
 	| ErrorPayload
 	| TerrainPayload;
-const viewerStyle = JSON.parse(
-	styleScript.textContent ?? '"classic"',
-) as ViewerStyle;
+const defaultViewerConfig: ViewerConfig = {
+	style: "classic",
+	hikingMapResolution: "standard",
+};
+const viewerConfig = {
+	...defaultViewerConfig,
+	...(JSON.parse(
+		viewerConfigScript.textContent ?? JSON.stringify(defaultViewerConfig),
+	) as Partial<ViewerConfig>),
+} satisfies ViewerConfig;
+const viewerStyle = viewerConfig.style;
 
 const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 	classic: {
@@ -184,7 +205,40 @@ const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 	},
 };
 
+const HIKING_MAP_TEXTURE_PRESETS: Record<
+	HikingMapResolution,
+	HikingMapTexturePreset
+> = {
+	low: {
+		label: "low",
+		initialZoom: 12,
+		maxTileRequests: 24,
+		maxTextureDimension: 4096,
+	},
+	standard: {
+		label: "standard",
+		initialZoom: 13,
+		maxTileRequests: 48,
+		maxTextureDimension: 6144,
+	},
+	high: {
+		label: "high",
+		initialZoom: 14,
+		maxTileRequests: 96,
+		maxTextureDimension: 8192,
+	},
+	ultra: {
+		label: "ultra",
+		initialZoom: 15,
+		maxTileRequests: 192,
+		maxTextureDimension: 12288,
+	},
+};
+
 const activeTheme = styleThemes[viewerStyle] ?? styleThemes.classic;
+const hikingMapTexturePreset =
+	HIKING_MAP_TEXTURE_PRESETS[viewerConfig.hikingMapResolution] ??
+	HIKING_MAP_TEXTURE_PRESETS.standard;
 for (const [name, value] of Object.entries(activeTheme.cssVars)) {
 	document.documentElement.style.setProperty(name, value);
 }
@@ -652,12 +706,27 @@ async function renderTerrainViewer(
 	const OPEN_HIKING_FALLBACK =
 		"Imagery unavailable; showing classic relief tint instead.";
 	const TILE_SIZE = 256;
-	const INITIAL_TILE_ZOOM = 12;
 	const MIN_TILE_ZOOM = 6;
-	const MAX_TILE_REQUESTS = 24;
-	const MAX_TEXTURE_DIMENSION = 4096;
+	const MAX_BROWSER_CANVAS_DIMENSION = 16384;
+	const maxTextureDimension = Math.max(
+		TILE_SIZE,
+		Math.min(
+			hikingMapTexturePreset.maxTextureDimension,
+			renderer.capabilities.maxTextureSize ||
+				hikingMapTexturePreset.maxTextureDimension,
+		),
+	);
+	const maxStitchedCanvasDimension = Math.max(
+		TILE_SIZE,
+		Math.min(
+			MAX_BROWSER_CANVAS_DIMENSION,
+			renderer.capabilities.maxTextureSize || MAX_BROWSER_CANVAS_DIMENSION,
+		),
+	);
 
-	styleAttribution.textContent = activeTheme.styleDescription;
+	styleAttribution.textContent = activeTheme.useHikingMap
+		? `${activeTheme.styleDescription} Resolution preset: ${hikingMapTexturePreset.label}.`
+		: activeTheme.styleDescription;
 
 	function clampLatitude(latitude: number): number {
 		return THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
@@ -688,6 +757,8 @@ async function renderTerrainViewer(
 		const tileXEnd = Math.max(tileXStart, Math.ceil(east) - 1);
 		const tileYStart = Math.floor(north);
 		const tileYEnd = Math.max(tileYStart, Math.ceil(south) - 1);
+		const tileColumns = tileXEnd - tileXStart + 1;
+		const tileRows = tileYEnd - tileYStart + 1;
 		return {
 			zoom,
 			west,
@@ -698,16 +769,32 @@ async function renderTerrainViewer(
 			tileXEnd,
 			tileYStart,
 			tileYEnd,
-			tileCount: (tileXEnd - tileXStart + 1) * (tileYEnd - tileYStart + 1),
+			tileColumns,
+			tileRows,
+			tileCount: tileColumns * tileRows,
 		};
+	}
+
+	function coverageFitsBudget(
+		coverage: ReturnType<typeof buildTileCoverage>,
+	): boolean {
+		return (
+			coverage.tileCount <= hikingMapTexturePreset.maxTileRequests &&
+			coverage.tileColumns * TILE_SIZE <= maxStitchedCanvasDimension &&
+			coverage.tileRows * TILE_SIZE <= maxStitchedCanvasDimension
+		);
 	}
 
 	function pickTileCoverage(targetBounds: TerrainPayload["bounds"]) {
 		let fallback = buildTileCoverage(targetBounds, MIN_TILE_ZOOM);
 
-		for (let zoom = INITIAL_TILE_ZOOM; zoom >= MIN_TILE_ZOOM; zoom -= 1) {
+		for (
+			let zoom = hikingMapTexturePreset.initialZoom;
+			zoom >= MIN_TILE_ZOOM;
+			zoom -= 1
+		) {
 			const coverage = buildTileCoverage(targetBounds, zoom);
-			if (coverage.tileCount <= MAX_TILE_REQUESTS) {
+			if (coverageFitsBudget(coverage)) {
 				return coverage;
 			}
 			fallback = coverage;
@@ -731,8 +818,8 @@ async function renderTerrainViewer(
 	async function buildOpenHikingTexture() {
 		const coverage = pickTileCoverage(bounds);
 		const worldTileCount = 2 ** coverage.zoom;
-		const tileColumns = coverage.tileXEnd - coverage.tileXStart + 1;
-		const tileRows = coverage.tileYEnd - coverage.tileYStart + 1;
+		const tileColumns = coverage.tileColumns;
+		const tileRows = coverage.tileRows;
 		const stitchedCanvas = document.createElement("canvas");
 		stitchedCanvas.width = tileColumns * TILE_SIZE;
 		stitchedCanvas.height = tileRows * TILE_SIZE;
@@ -791,7 +878,7 @@ async function renderTerrainViewer(
 		);
 		const textureScale = Math.min(
 			1,
-			MAX_TEXTURE_DIMENSION / Math.max(cropWidth, cropHeight),
+			maxTextureDimension / Math.max(cropWidth, cropHeight),
 		);
 		const outputCanvas = document.createElement("canvas");
 		outputCanvas.width = Math.max(1, Math.round(cropWidth * textureScale));
@@ -825,6 +912,7 @@ async function renderTerrainViewer(
 			texture,
 			zoom: coverage.zoom,
 			tileCount: coverage.tileCount,
+			preset: hikingMapTexturePreset.label,
 		};
 	}
 
@@ -1115,7 +1203,7 @@ async function renderTerrainViewer(
 
 	if (activeTheme.useHikingMap) {
 		buildOpenHikingTexture()
-			.then(({ texture, zoom, tileCount }) => {
+			.then(({ texture, zoom, tileCount, preset }) => {
 				geometry.setAttribute(
 					"color",
 					new THREE.BufferAttribute(hikingTextureBlendColors, 3),
@@ -1123,7 +1211,7 @@ async function renderTerrainViewer(
 				geometry.attributes.color.needsUpdate = true;
 				terrainMaterial.map = texture;
 				terrainMaterial.needsUpdate = true;
-				styleAttribution.innerHTML = `${OPEN_HIKING_ATTRIBUTION} <span>Loaded ${tileCount} tiles at z${zoom}.</span>`;
+				styleAttribution.innerHTML = `${OPEN_HIKING_ATTRIBUTION} <span>Loaded ${tileCount} tiles at z${zoom} using the ${escapeText(preset)} preset.</span>`;
 			})
 			.catch((error) => {
 				console.warn(error);

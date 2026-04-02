@@ -1,10 +1,21 @@
-import type { ParsedWidgetConfig, ViewerStyle } from "./types.ts";
+import type {
+	HikingMapResolution,
+	ParsedWidgetConfig,
+	ViewerStyle,
+} from "./types.ts";
 
 const DEFAULT_VIEWER_STYLE: ViewerStyle = "classic";
+const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
 const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
 	"classic",
 	"hiking-map",
 	"vaporwave",
+];
+const SUPPORTED_HIKING_MAP_RESOLUTIONS: HikingMapResolution[] = [
+	"low",
+	"standard",
+	"high",
+	"ultra",
 ];
 
 function isRemoteUrl(candidate: string): boolean {
@@ -73,6 +84,21 @@ export function normalizeViewerStyle(input: string): ViewerStyle {
 	);
 }
 
+export function normalizeHikingMapResolution(
+	input: string,
+): HikingMapResolution {
+	const normalized = input.trim().toLowerCase();
+	if (
+		SUPPORTED_HIKING_MAP_RESOLUTIONS.includes(normalized as HikingMapResolution)
+	) {
+		return normalized as HikingMapResolution;
+	}
+
+	throw new Error(
+		`Unsupported hiking-map-resolution "${input.trim()}". Supported values: ${SUPPORTED_HIKING_MAP_RESOLUTIONS.join(", ")}.`,
+	);
+}
+
 export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	const meaningfulLines = bodyText
 		.split(/\r?\n/)
@@ -86,14 +112,16 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	}
 
 	const [sourceLine, ...optionLines] = meaningfulLines;
-	if (/^style\s*:/i.test(sourceLine)) {
+	if (/^(?:style|hiking-map-resolution)\s*:/i.test(sourceLine)) {
 		throw new Error(
-			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave below it.",
+			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave and optional hiking-map-resolution: standard|high|ultra below it.",
 		);
 	}
 
 	let style = DEFAULT_VIEWER_STYLE;
+	let hikingMapResolution = DEFAULT_HIKING_MAP_RESOLUTION;
 	let sawStyle = false;
+	let sawHikingMapResolution = false;
 	for (const line of optionLines) {
 		const styleMatch = /^style\s*:\s*(.+)$/i.exec(line);
 		if (styleMatch) {
@@ -105,14 +133,37 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 			continue;
 		}
 
+		const hikingMapResolutionMatch = /^hiking-map-resolution\s*:\s*(.+)$/i.exec(
+			line,
+		);
+		if (hikingMapResolutionMatch) {
+			if (sawHikingMapResolution) {
+				throw new Error(
+					"Duplicate hiking-map-resolution option in cimal widget body.",
+				);
+			}
+			hikingMapResolution = normalizeHikingMapResolution(
+				hikingMapResolutionMatch[1],
+			);
+			sawHikingMapResolution = true;
+			continue;
+		}
+
 		throw new Error(
-			`Unsupported cimal widget option "${line}". Supported option: style: classic|hiking-map|vaporwave.`,
+			`Unsupported cimal widget option "${line}". Supported options: style: classic|hiking-map|vaporwave and hiking-map-resolution: standard|high|ultra.`,
+		);
+	}
+
+	if (sawHikingMapResolution && style !== "hiking-map") {
+		throw new Error(
+			'Hiking-map resolution can only be used with "style: hiking-map".',
 		);
 	}
 
 	return {
 		source: sourceLine,
 		style,
+		hikingMapResolution,
 	};
 }
 

@@ -10,6 +10,7 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Loads the surrounding Copernicus DEM tiles from the public AWS bucket.
 - Supports three per-widget visual styles: `classic`, `hiking-map`, and `vaporwave`.
 - Overlays OpenHikingMap raster tiles on the 3D terrain surface when `style: hiking-map` is selected.
+- Supports per-widget hiking-map imagery presets: `standard`, `high`, and `ultra`.
 - Falls back to classic elevation-based terrain shading if external imagery tiles are unavailable.
 - Highlights likely water bodies in blue in the `classic` and `vaporwave` styles using DEM-based detection.
 - Renders the route as an interactive Three.js scene with orbit controls and basic route stats.
@@ -37,12 +38,23 @@ style: classic
 ```
 ````
 
+Or use a prebuilt pack with sharper hiking-map imagery:
+
+````markdown
+```cimal
+Library/Cimal/track.cimal
+style: hiking-map
+hiking-map-resolution: high
+```
+````
+
 Or point the widget directly at a GPX source and let Cimal cache the generated pack:
 
 ````markdown
 ```cimal
 Library/Tracks/track.gpx
 style: hiking-map
+hiking-map-resolution: high
 ```
 ````
 
@@ -58,6 +70,8 @@ style: vaporwave
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
 The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
+
+When `style: hiking-map` is active, you can also add `hiking-map-resolution: standard|high|ultra`. `standard` preserves the default behavior, while `high` and `ultra` allow more tile requests and larger stitched textures for sharper imagery on smaller areas. Higher presets use more network requests and texture memory, and large bounds may still step down zoom automatically to stay within the viewer budget.
 
 At render time, the iframe viewer only fetches live OpenHikingMap raster imagery for `style: hiking-map`. The `.cimal` pack still only stores terrain and track data, and the viewer falls back to the built-in classic relief tint if those tile requests fail.
 

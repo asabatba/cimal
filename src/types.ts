@@ -62,10 +62,15 @@ export type TerrainPayload = {
 };
 
 export type ViewerStyle = "classic" | "hiking-map" | "vaporwave";
+export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
 
-export type ParsedWidgetConfig = {
-	source: string;
+export type ViewerConfig = {
 	style: ViewerStyle;
+	hikingMapResolution: HikingMapResolution;
+};
+
+export type ParsedWidgetConfig = ViewerConfig & {
+	source: string;
 };
 
 export type ErrorPayload = {

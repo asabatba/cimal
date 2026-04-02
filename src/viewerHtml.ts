@@ -1,9 +1,18 @@
 import { VIEWER_DOCUMENT_TEMPLATE } from "./generated/viewerBundle.ts";
-import type { ErrorPayload, TerrainPayload, ViewerStyle } from "./types.ts";
+import type {
+	ErrorPayload,
+	TerrainPayload,
+	ViewerConfig,
+	ViewerStyle,
+} from "./types.ts";
 
 const TITLE_PLACEHOLDER = "__CIMAL_VIEWER_TITLE__";
 const PAYLOAD_PLACEHOLDER = "__CIMAL_VIEWER_PAYLOAD__";
-const STYLE_PLACEHOLDER = "__CIMAL_VIEWER_STYLE__";
+const CONFIG_PLACEHOLDER = "__CIMAL_VIEWER_CONFIG__";
+const DEFAULT_VIEWER_CONFIG: ViewerConfig = {
+	style: "classic",
+	hikingMapResolution: "standard",
+};
 
 function escapeHtml(value: string): string {
 	return value
@@ -27,8 +36,21 @@ function replacePlaceholder(
 
 export function buildViewerDataUrl(
 	payload: ErrorPayload | TerrainPayload,
-	viewerStyle: ViewerStyle = "classic",
+	viewerConfig: ViewerConfig | ViewerStyle = DEFAULT_VIEWER_CONFIG,
 ): string {
+	const normalizedViewerConfig: ViewerConfig =
+		typeof viewerConfig === "string"
+			? {
+					...DEFAULT_VIEWER_CONFIG,
+					style: viewerConfig,
+				}
+			: {
+					style: viewerConfig.style ?? DEFAULT_VIEWER_CONFIG.style,
+					hikingMapResolution:
+						viewerConfig.hikingMapResolution ??
+						DEFAULT_VIEWER_CONFIG.hikingMapResolution,
+				};
+
 	const html = replacePlaceholder(
 		replacePlaceholder(
 			replacePlaceholder(
@@ -36,11 +58,11 @@ export function buildViewerDataUrl(
 				TITLE_PLACEHOLDER,
 				escapeHtml(payload.title),
 			),
-			PAYLOAD_PLACEHOLDER,
-			toEmbeddedJson(payload),
+			CONFIG_PLACEHOLDER,
+			toEmbeddedJson(normalizedViewerConfig),
 		),
-		STYLE_PLACEHOLDER,
-		toEmbeddedJson(viewerStyle),
+		PAYLOAD_PLACEHOLDER,
+		toEmbeddedJson(payload),
 	);
 
 	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;

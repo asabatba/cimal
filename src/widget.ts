@@ -43,7 +43,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		};
 	}
 
-	const { source, style } = widgetConfig;
+	const { source, ...viewerConfig } = widgetConfig;
 	let primaryError: unknown = null;
 
 	try {
@@ -51,7 +51,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		const packed = await space.readFile(packPath);
 		const payload = decodeTerrainPack(packed);
 		return {
-			url: buildViewerDataUrl(payload, style),
+			url: buildViewerDataUrl(payload, viewerConfig),
 			width: 960,
 			height: 600,
 		};
@@ -70,7 +70,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 			}
 			const payload = decodeTerrainPack(packed);
 			return {
-				url: buildViewerDataUrl(payload, style),
+				url: buildViewerDataUrl(payload, viewerConfig),
 				width: 960,
 				height: 600,
 			};
@@ -83,7 +83,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		return {
 			url: buildViewerDataUrl(
 				buildError("Cimal pack preview failed", message),
-				style,
+				viewerConfig,
 			),
 			width: 960,
 			height: 340,
