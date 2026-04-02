@@ -9,6 +9,7 @@ import type {
 const TITLE_PLACEHOLDER = "__CIMAL_VIEWER_TITLE__";
 const PAYLOAD_PLACEHOLDER = "__CIMAL_VIEWER_PAYLOAD__";
 const CONFIG_PLACEHOLDER = "__CIMAL_VIEWER_CONFIG__";
+const MAX_EMBEDDED_BAKED_TEXTURE_DATA_URL_LENGTH = 1_200_000;
 const DEFAULT_VIEWER_CONFIG: ViewerConfig = {
 	style: "classic",
 	hikingMapResolution: "standard",
@@ -32,6 +33,30 @@ function replacePlaceholder(
 	value: string,
 ): string {
 	return template.split(placeholder).join(value);
+}
+
+function normalizePayloadForEmbedding(
+	payload: ErrorPayload | TerrainPayload,
+): ErrorPayload | TerrainPayload {
+	if (!("bakedHikingMap" in payload) || !payload.bakedHikingMap) {
+		return payload;
+	}
+
+	if (
+		payload.bakedHikingMap.dataUrl.length <=
+		MAX_EMBEDDED_BAKED_TEXTURE_DATA_URL_LENGTH
+	) {
+		return payload;
+	}
+
+	const warning =
+		"The baked hiking-map texture in this pack is too large to embed in the widget iframe. Rebuild the pack at a lower hiking-map resolution to display it here.";
+
+	return {
+		...payload,
+		bakedHikingMap: undefined,
+		warning: payload.warning ? `${payload.warning} ${warning}` : warning,
+	};
 }
 
 export function buildViewerDataUrl(
@@ -62,7 +87,7 @@ export function buildViewerDataUrl(
 			toEmbeddedJson(normalizedViewerConfig),
 		),
 		PAYLOAD_PLACEHOLDER,
-		toEmbeddedJson(payload),
+		toEmbeddedJson(normalizePayloadForEmbedding(payload)),
 	);
 
 	return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;

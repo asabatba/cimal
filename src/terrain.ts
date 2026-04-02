@@ -7,6 +7,7 @@ import {
 } from "./constants.ts";
 import { enumerateTiles, loadTile, sampleElevation } from "./copernicus.ts";
 import { fetchTrackData, parseTrackData } from "./gpx.ts";
+import { bakeHikingMapTexture } from "./hikingMap.ts";
 import {
 	boundsHeight,
 	boundsWidth,
@@ -21,12 +22,18 @@ import {
 import type {
 	GeoBounds,
 	GeoPoint,
+	HikingMapResolution,
 	LocalPoint,
 	TerrainPayload,
 } from "./types.ts";
 
 const TRACK_RESAMPLE_SPACING_METERS = 50;
 const TRACK_VISUAL_MARGIN_METERS = 180;
+const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
+
+type TerrainBuildOptions = {
+	hikingMapResolution?: HikingMapResolution;
+};
 
 function padTrackBounds(bounds: GeoBounds, distanceMeters: number): GeoBounds {
 	const center = getBoundsCenter(bounds);
@@ -189,6 +196,7 @@ function computeTrackElevationStats(points: LocalPoint[]): {
 
 export async function buildTerrainPayloadFromTrackData(
 	track: Awaited<ReturnType<typeof fetchTrackData>>,
+	options: TerrainBuildOptions = {},
 ): Promise<TerrainPayload> {
 	const gpxUrl = track.sourceUrl;
 	const paddedBounds = padTrackBounds(track.bounds, track.distanceMeters);
@@ -258,6 +266,21 @@ export async function buildTerrainPayloadFromTrackData(
 
 	const elevationStats = computeTrackElevationStats(renderedTrack);
 	const title = gpxUrl.split("/").filter(Boolean).pop() ?? "GPX track";
+	let bakedHikingMap: TerrainPayload["bakedHikingMap"];
+
+	try {
+		bakedHikingMap =
+			(await bakeHikingMapTexture(
+				paddedBounds,
+				options.hikingMapResolution ?? DEFAULT_HIKING_MAP_RESOLUTION,
+			)) ?? undefined;
+	} catch (error) {
+		console.warn(
+			"Unable to bake OpenHikingMap imagery into .cimal pack.",
+			error,
+		);
+		bakedHikingMap = undefined;
+	}
 
 	return {
 		title,
@@ -273,6 +296,7 @@ export async function buildTerrainPayloadFromTrackData(
 			maxElevation,
 		},
 		track: renderedTrack,
+		bakedHikingMap,
 		stats: {
 			distanceKm: elevationStats.distanceKm || track.distanceMeters / 1000,
 			totalAscent: elevationStats.totalAscent || track.totalAscent,
@@ -285,14 +309,16 @@ export async function buildTerrainPayloadFromTrackData(
 
 export async function buildTerrainPayload(
 	gpxUrl: string,
+	options: TerrainBuildOptions = {},
 ): Promise<TerrainPayload> {
 	const track = await fetchTrackData(gpxUrl);
-	return buildTerrainPayloadFromTrackData(track);
+	return buildTerrainPayloadFromTrackData(track, options);
 }
 
 export async function buildTerrainPayloadFromGpxXml(
 	gpxUrl: string,
 	xml: string,
+	options: TerrainBuildOptions = {},
 ): Promise<TerrainPayload> {
-	return buildTerrainPayloadFromTrackData(parseTrackData(gpxUrl, xml));
+	return buildTerrainPayloadFromTrackData(parseTrackData(gpxUrl, xml), options);
 }

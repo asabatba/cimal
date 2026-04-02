@@ -3,6 +3,7 @@ import {
 	buildCimalPackCacheKey,
 	buildPackedCimalCacheEntry,
 	getCachedPack,
+	invalidateCachedPack,
 	putCachedPack,
 } from "./cache.ts";
 import { readGpxXml } from "./gpx.ts";
@@ -11,9 +12,17 @@ import {
 	normalizePackPath,
 	parseWidgetConfig,
 } from "./input.ts";
-import { decodeTerrainPack, encodeTerrainPack } from "./pack.ts";
+import {
+	decodeTerrainPack,
+	encodeTerrainPack,
+	isInvalidOrOutdatedTerrainPackError,
+} from "./pack.ts";
 import { buildTerrainPayloadFromGpxXml } from "./terrain.ts";
-import type { ErrorPayload, ParsedWidgetConfig } from "./types.ts";
+import type {
+	ErrorPayload,
+	ParsedWidgetConfig,
+	TerrainPayload,
+} from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
 
 function buildError(
@@ -43,11 +52,34 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		};
 	}
 
-	const { source, ...viewerConfig } = widgetConfig;
+	const { source, hasExplicitHikingMapResolution, ...viewerConfig } =
+		widgetConfig;
+	let packPath: string | null = null;
+	try {
+		packPath = normalizePackPath(source);
+	} catch {
+		packPath = null;
+	}
+
+	if (packPath && hasExplicitHikingMapResolution) {
+		const message =
+			'Hiking-map resolution is baked into existing .cimal packs. Rebuild the pack from the GPX at the desired resolution instead of setting "hiking-map-resolution" on a .cimal widget.';
+		return {
+			url: buildViewerDataUrl(
+				buildError("Cimal widget configuration error", message),
+				viewerConfig,
+			),
+			width: 960,
+			height: 340,
+		};
+	}
+
 	let primaryError: unknown = null;
 
 	try {
-		const packPath = normalizePackPath(source);
+		if (!packPath) {
+			throw new Error("Source is not a .cimal pack path.");
+		}
 		const packed = await space.readFile(packPath);
 		const payload = decodeTerrainPack(packed);
 		return {
@@ -60,15 +92,40 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		try {
 			const gpxSource = normalizeGpxSource(source);
 			const xml = await readGpxXml(gpxSource);
-			const cacheKey = buildCimalPackCacheKey(gpxSource, xml);
+			const cacheKey = buildCimalPackCacheKey(
+				gpxSource,
+				xml,
+				viewerConfig.hikingMapResolution,
+			);
 			let packed = await getCachedPack(cacheKey);
+			let payload: TerrainPayload | null = null;
+			if (packed) {
+				try {
+					payload = decodeTerrainPack(packed);
+				} catch (cachedPackError) {
+					if (!isInvalidOrOutdatedTerrainPackError(cachedPackError)) {
+						throw cachedPackError;
+					}
+					await invalidateCachedPack(cacheKey);
+					packed = null;
+				}
+			}
 			if (!packed) {
-				const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml);
+				const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml, {
+					hikingMapResolution: viewerConfig.hikingMapResolution,
+				});
 				packed = encodeTerrainPack(payload);
 				const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
 				await putCachedPack(cacheEntry.key, cacheEntry.path, packed);
+				return {
+					url: buildViewerDataUrl(payload, viewerConfig),
+					width: 960,
+					height: 600,
+				};
 			}
-			const payload = decodeTerrainPack(packed);
+			if (!payload) {
+				throw new Error("Cached .cimal pack could not be decoded.");
+			}
 			return {
 				url: buildViewerDataUrl(payload, viewerConfig),
 				width: 960,

@@ -9,9 +9,9 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Auto-builds and caches `.cimal` packs when a widget body contains a GPX source.
 - Loads the surrounding Copernicus DEM tiles from the public AWS bucket.
 - Supports three per-widget visual styles: `classic`, `hiking-map`, and `vaporwave`.
-- Overlays OpenHikingMap raster tiles on the 3D terrain surface when `style: hiking-map` is selected.
-- Supports per-widget hiking-map imagery presets: `standard`, `high`, and `ultra`.
-- Falls back to classic elevation-based terrain shading if external imagery tiles are unavailable.
+- Bakes OpenHikingMap imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: hiking-map` is selected.
+- Supports hiking-map imagery presets: `low`, `standard`, `high`, and `ultra`.
+- Falls back to classic elevation-based terrain shading when a pack has no baked hiking-map imagery.
 - Highlights likely water bodies in blue in the `classic` and `vaporwave` styles using DEM-based detection.
 - Renders the route as an interactive Three.js scene with orbit controls and basic route stats.
 
@@ -38,13 +38,12 @@ style: classic
 ```
 ````
 
-Or use a prebuilt pack with sharper hiking-map imagery:
+Or use a prebuilt pack with the baked hiking-map texture that was already embedded during pack creation:
 
 ````markdown
 ```cimal
 Library/Cimal/track.cimal
 style: hiking-map
-hiking-map-resolution: high
 ```
 ````
 
@@ -71,9 +70,11 @@ The build step fetches the GPX, derives a padded bounding box around the route, 
 
 The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
 
-When `style: hiking-map` is active, you can also add `hiking-map-resolution: standard|high|ultra`. `standard` preserves the default behavior, while `high` and `ultra` allow more tile requests and larger stitched textures for sharper imagery on smaller areas. Higher presets use more network requests and texture memory, and large bounds may still step down zoom automatically to stay within the viewer budget.
+When the widget body points at a GPX source and `style: hiking-map` is active, you can also add `hiking-map-resolution: low|standard|high|ultra`. That resolution is baked into the generated `.cimal` pack and cached separately per preset. Higher presets use more network requests and produce larger embedded textures.
 
-At render time, the iframe viewer only fetches live OpenHikingMap raster imagery for `style: hiking-map`. The `.cimal` pack still only stores terrain and track data, and the viewer falls back to the built-in classic relief tint if those tile requests fail.
+When the widget body points at an existing `.cimal` pack, `hiking-map-resolution` is not valid because the baked imagery is already fixed in the pack. Rebuild the pack from the GPX at the desired preset instead.
+
+New `.cimal` packs now attempt to bake OpenHikingMap imagery during pack creation. If that imagery fetch or bake step fails, the pack is still written with terrain and track data only, and the viewer falls back to the built-in classic relief tint for `style: hiking-map`.
 
 The shaded styles (`classic` and `vaporwave`) also apply a heuristic water-body detector that looks for large contiguous flat plateaus in the DEM and paints them blue. This is intentionally conservative and may miss some smaller lakes or reservoirs rather than over-painting terraces and other flat terrain. The `hiking-map` style does not add this synthetic blue overlay.
 

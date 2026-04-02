@@ -1,7 +1,7 @@
 import { COPERNICUS_S3_ROOT, THREE_JS_VERSION } from "../constants.ts";
+import { OPEN_HIKING_ATTRIBUTION, OPEN_HIKING_FALLBACK } from "../hikingMap.ts";
 import type {
 	ErrorPayload,
-	HikingMapResolution,
 	TerrainPayload,
 	ViewerConfig,
 	ViewerStyle,
@@ -32,13 +32,6 @@ type ViewerTheme = {
 	finishColor: number;
 	ringColor: number;
 	ringOpacity: number;
-};
-
-type HikingMapTexturePreset = {
-	label: string;
-	initialZoom: number;
-	maxTileRequests: number;
-	maxTextureDimension: number;
 };
 
 function escapeText(value: string): string {
@@ -132,7 +125,7 @@ const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--text": "#eaf2f5",
 			"--muted": "#a2b7b0",
 		},
-		styleDescription: "Imagery: loading OpenHikingMap overlay.",
+		styleDescription: "Imagery: baked OpenHikingMap texture.",
 		useHikingMap: true,
 		useWaterTint: false,
 		fogColor: 0x112326,
@@ -205,40 +198,7 @@ const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 	},
 };
 
-const HIKING_MAP_TEXTURE_PRESETS: Record<
-	HikingMapResolution,
-	HikingMapTexturePreset
-> = {
-	low: {
-		label: "low",
-		initialZoom: 12,
-		maxTileRequests: 24,
-		maxTextureDimension: 4096,
-	},
-	standard: {
-		label: "standard",
-		initialZoom: 13,
-		maxTileRequests: 48,
-		maxTextureDimension: 6144,
-	},
-	high: {
-		label: "high",
-		initialZoom: 14,
-		maxTileRequests: 96,
-		maxTextureDimension: 8192,
-	},
-	ultra: {
-		label: "ultra",
-		initialZoom: 15,
-		maxTileRequests: 192,
-		maxTextureDimension: 12288,
-	},
-};
-
 const activeTheme = styleThemes[viewerStyle] ?? styleThemes.classic;
-const hikingMapTexturePreset =
-	HIKING_MAP_TEXTURE_PRESETS[viewerConfig.hikingMapResolution] ??
-	HIKING_MAP_TEXTURE_PRESETS.standard;
 for (const [name, value] of Object.entries(activeTheme.cssVars)) {
 	document.documentElement.style.setProperty(name, value);
 }
@@ -699,221 +659,18 @@ async function renderTerrainViewer(
 		return waterMask;
 	}
 
-	const OPEN_HIKING_TILE_URL =
-		"https://tile.openmaps.fr/openhikingmap/{z}/{x}/{y}.png";
-	const OPEN_HIKING_ATTRIBUTION =
-		'Imagery: <a href="https://tile.openmaps.fr/" target="_blank" rel="noreferrer">OpenHikingMap</a> with <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> data.';
-	const OPEN_HIKING_FALLBACK =
-		"Imagery unavailable; showing classic relief tint instead.";
-	const TILE_SIZE = 256;
-	const MIN_TILE_ZOOM = 6;
-	const MAX_BROWSER_CANVAS_DIMENSION = 16384;
-	const maxTextureDimension = Math.max(
-		TILE_SIZE,
-		Math.min(
-			hikingMapTexturePreset.maxTextureDimension,
-			renderer.capabilities.maxTextureSize ||
-				hikingMapTexturePreset.maxTextureDimension,
-		),
-	);
-	const maxStitchedCanvasDimension = Math.max(
-		TILE_SIZE,
-		Math.min(
-			MAX_BROWSER_CANVAS_DIMENSION,
-			renderer.capabilities.maxTextureSize || MAX_BROWSER_CANVAS_DIMENSION,
-		),
-	);
+	styleAttribution.textContent = activeTheme.styleDescription;
 
-	styleAttribution.textContent = activeTheme.useHikingMap
-		? `${activeTheme.styleDescription} Resolution preset: ${hikingMapTexturePreset.label}.`
-		: activeTheme.styleDescription;
-
-	function clampLatitude(latitude: number): number {
-		return THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
-	}
-
-	function longitudeToTileX(longitude: number, zoom: number): number {
-		return ((longitude + 180) / 360) * 2 ** zoom;
-	}
-
-	function latitudeToTileY(latitude: number, zoom: number): number {
-		const radians = THREE.MathUtils.degToRad(clampLatitude(latitude));
-		return (
-			((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) /
-				2) *
-			2 ** zoom
-		);
-	}
-
-	function buildTileCoverage(
-		targetBounds: TerrainPayload["bounds"],
-		zoom: number,
-	) {
-		const west = longitudeToTileX(targetBounds.minLon, zoom);
-		const east = longitudeToTileX(targetBounds.maxLon, zoom);
-		const north = latitudeToTileY(targetBounds.maxLat, zoom);
-		const south = latitudeToTileY(targetBounds.minLat, zoom);
-		const tileXStart = Math.floor(west);
-		const tileXEnd = Math.max(tileXStart, Math.ceil(east) - 1);
-		const tileYStart = Math.floor(north);
-		const tileYEnd = Math.max(tileYStart, Math.ceil(south) - 1);
-		const tileColumns = tileXEnd - tileXStart + 1;
-		const tileRows = tileYEnd - tileYStart + 1;
-		return {
-			zoom,
-			west,
-			east,
-			north,
-			south,
-			tileXStart,
-			tileXEnd,
-			tileYStart,
-			tileYEnd,
-			tileColumns,
-			tileRows,
-			tileCount: tileColumns * tileRows,
-		};
-	}
-
-	function coverageFitsBudget(
-		coverage: ReturnType<typeof buildTileCoverage>,
-	): boolean {
-		return (
-			coverage.tileCount <= hikingMapTexturePreset.maxTileRequests &&
-			coverage.tileColumns * TILE_SIZE <= maxStitchedCanvasDimension &&
-			coverage.tileRows * TILE_SIZE <= maxStitchedCanvasDimension
-		);
-	}
-
-	function pickTileCoverage(targetBounds: TerrainPayload["bounds"]) {
-		let fallback = buildTileCoverage(targetBounds, MIN_TILE_ZOOM);
-
-		for (
-			let zoom = hikingMapTexturePreset.initialZoom;
-			zoom >= MIN_TILE_ZOOM;
-			zoom -= 1
-		) {
-			const coverage = buildTileCoverage(targetBounds, zoom);
-			if (coverageFitsBudget(coverage)) {
-				return coverage;
-			}
-			fallback = coverage;
-		}
-
-		return fallback;
-	}
-
-	function loadTileImage(url: string): Promise<HTMLImageElement> {
-		return new Promise((resolve, reject) => {
-			const image = new Image();
-			image.crossOrigin = "anonymous";
-			image.decoding = "async";
-			image.onload = () => resolve(image);
-			image.onerror = () =>
-				reject(new Error(`Failed to load raster tile ${url}`));
-			image.src = url;
+	function loadPackedTexture(dataUrl: string) {
+		const loader = new THREE.TextureLoader();
+		return loader.loadAsync(dataUrl).then((texture) => {
+			texture.colorSpace = THREE.SRGBColorSpace;
+			texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+			texture.wrapS = THREE.ClampToEdgeWrapping;
+			texture.wrapT = THREE.ClampToEdgeWrapping;
+			texture.needsUpdate = true;
+			return texture;
 		});
-	}
-
-	async function buildOpenHikingTexture() {
-		const coverage = pickTileCoverage(bounds);
-		const worldTileCount = 2 ** coverage.zoom;
-		const tileColumns = coverage.tileColumns;
-		const tileRows = coverage.tileRows;
-		const stitchedCanvas = document.createElement("canvas");
-		stitchedCanvas.width = tileColumns * TILE_SIZE;
-		stitchedCanvas.height = tileRows * TILE_SIZE;
-		const stitchedContext = stitchedCanvas.getContext("2d");
-
-		if (!stitchedContext) {
-			throw new Error("Unable to create raster tile canvas.");
-		}
-
-		const tileRequests: Array<
-			Promise<{ image: HTMLImageElement; tileX: number; tileY: number }>
-		> = [];
-		for (
-			let tileY = coverage.tileYStart;
-			tileY <= coverage.tileYEnd;
-			tileY += 1
-		) {
-			for (
-				let tileX = coverage.tileXStart;
-				tileX <= coverage.tileXEnd;
-				tileX += 1
-			) {
-				const wrappedX =
-					((tileX % worldTileCount) + worldTileCount) % worldTileCount;
-				const clampedY = THREE.MathUtils.clamp(tileY, 0, worldTileCount - 1);
-				const url = OPEN_HIKING_TILE_URL.replace("{z}", String(coverage.zoom))
-					.replace("{x}", String(wrappedX))
-					.replace("{y}", String(clampedY));
-				tileRequests.push(
-					loadTileImage(url).then((image) => ({
-						image,
-						tileX,
-						tileY,
-					})),
-				);
-			}
-		}
-
-		const tiles = await Promise.all(tileRequests);
-		for (const tile of tiles) {
-			stitchedContext.drawImage(
-				tile.image,
-				(tile.tileX - coverage.tileXStart) * TILE_SIZE,
-				(tile.tileY - coverage.tileYStart) * TILE_SIZE,
-				TILE_SIZE,
-				TILE_SIZE,
-			);
-		}
-
-		const cropLeft = (coverage.west - coverage.tileXStart) * TILE_SIZE;
-		const cropTop = (coverage.north - coverage.tileYStart) * TILE_SIZE;
-		const cropWidth = Math.max(1, (coverage.east - coverage.west) * TILE_SIZE);
-		const cropHeight = Math.max(
-			1,
-			(coverage.south - coverage.north) * TILE_SIZE,
-		);
-		const textureScale = Math.min(
-			1,
-			maxTextureDimension / Math.max(cropWidth, cropHeight),
-		);
-		const outputCanvas = document.createElement("canvas");
-		outputCanvas.width = Math.max(1, Math.round(cropWidth * textureScale));
-		outputCanvas.height = Math.max(1, Math.round(cropHeight * textureScale));
-		const outputContext = outputCanvas.getContext("2d");
-
-		if (!outputContext) {
-			throw new Error("Unable to create cropped tile canvas.");
-		}
-
-		outputContext.drawImage(
-			stitchedCanvas,
-			cropLeft,
-			cropTop,
-			cropWidth,
-			cropHeight,
-			0,
-			0,
-			outputCanvas.width,
-			outputCanvas.height,
-		);
-
-		const texture = new THREE.CanvasTexture(outputCanvas);
-		texture.colorSpace = THREE.SRGBColorSpace;
-		texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-		texture.wrapS = THREE.ClampToEdgeWrapping;
-		texture.wrapT = THREE.ClampToEdgeWrapping;
-		texture.needsUpdate = true;
-
-		return {
-			texture,
-			zoom: coverage.zoom,
-			tileCount: coverage.tileCount,
-			preset: hikingMapTexturePreset.label,
-		};
 	}
 
 	function buildTrackRibbon(
@@ -1202,21 +959,25 @@ async function renderTerrainViewer(
 	scene.add(terrain);
 
 	if (activeTheme.useHikingMap) {
-		buildOpenHikingTexture()
-			.then(({ texture, zoom, tileCount, preset }) => {
-				geometry.setAttribute(
-					"color",
-					new THREE.BufferAttribute(hikingTextureBlendColors, 3),
-				);
-				geometry.attributes.color.needsUpdate = true;
-				terrainMaterial.map = texture;
-				terrainMaterial.needsUpdate = true;
-				styleAttribution.innerHTML = `${OPEN_HIKING_ATTRIBUTION} <span>Loaded ${tileCount} tiles at z${zoom} using the ${escapeText(preset)} preset.</span>`;
-			})
-			.catch((error) => {
-				console.warn(error);
-				styleAttribution.textContent = OPEN_HIKING_FALLBACK;
-			});
+		if (payload.bakedHikingMap) {
+			loadPackedTexture(payload.bakedHikingMap.dataUrl)
+				.then((texture) => {
+					geometry.setAttribute(
+						"color",
+						new THREE.BufferAttribute(hikingTextureBlendColors, 3),
+					);
+					geometry.attributes.color.needsUpdate = true;
+					terrainMaterial.map = texture;
+					terrainMaterial.needsUpdate = true;
+					styleAttribution.innerHTML = `${OPEN_HIKING_ATTRIBUTION} <span>Baked ${escapeText(payload.bakedHikingMap?.resolution ?? "standard")} texture.</span>`;
+				})
+				.catch((error) => {
+					console.warn(error);
+					styleAttribution.textContent = OPEN_HIKING_FALLBACK;
+				});
+		} else {
+			styleAttribution.textContent = OPEN_HIKING_FALLBACK;
+		}
 	}
 
 	const trackRibbonWidth = THREE.MathUtils.clamp(sceneSpan * 0.012, 14, 60);

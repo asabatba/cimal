@@ -37,6 +37,14 @@ export type TerrainGrid = {
 	maxElevation: number;
 };
 
+export type BakedHikingMapTexture = {
+	width: number;
+	height: number;
+	mimeType: string;
+	resolution: HikingMapResolution;
+	dataUrl: string;
+};
+
 export type TerrainPayload = {
 	title: string;
 	sourceUrl: string;
@@ -52,6 +60,7 @@ export type TerrainPayload = {
 	};
 	grid: TerrainGrid;
 	track: LocalPoint[];
+	bakedHikingMap?: BakedHikingMapTexture;
 	stats: {
 		distanceKm: number;
 		totalAscent: number;
@@ -71,6 +80,7 @@ export type ViewerConfig = {
 
 export type ParsedWidgetConfig = ViewerConfig & {
 	source: string;
+	hasExplicitHikingMapResolution: boolean;
 };
 
 export type ErrorPayload = {
@@ -125,4 +135,11 @@ export type CimalPackHeader = {
 	};
 	stats: TerrainPayload["stats"];
 	trackPointCount: number;
+	bakedHikingMap?: {
+		width: number;
+		height: number;
+		mimeType: string;
+		resolution: HikingMapResolution;
+		byteLength: number;
+	};
 };

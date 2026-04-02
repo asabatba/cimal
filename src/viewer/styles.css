@@ -49,6 +49,7 @@ body {
 }
 
 .hud {
+	display: none;
 	top: 16px;
 	left: 16px;
 	max-width: min(380px, calc(100vw - 32px));
@@ -110,12 +111,21 @@ body {
 .attribution {
 	right: 16px;
 	bottom: 16px;
-	max-width: min(420px, calc(100vw - 32px));
+	width: 2rem;
+	height: 2rem;
 	padding: 10px 12px;
 	border-radius: 14px;
-	font-size: 0.78rem;
+	font-size: 0.5rem;
 	line-height: 1.4;
 	color: var(--muted);
+	transition: width 0.3s ease, max-width 0.3s ease;
+	overflow: hidden;
+}
+
+.attribution:hover {
+	width: auto;
+	height: auto;
+	max-width: min(420px, calc(100vw - 32px));
 }
 
 .attribution a {

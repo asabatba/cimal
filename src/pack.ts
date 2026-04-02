@@ -6,12 +6,24 @@ const decoder = new TextDecoder();
 const PACK_MAGIC = "CMLP";
 const PACK_PREAMBLE_BYTES = 12;
 const UINT16_MAX = 65535;
+const PACK_IMAGE_FORMAT_VERSION = 3;
+const PACK_LEGACY_VERSION = 2;
 
 function align4(n: number): number {
 	return (n + 3) & ~3;
 }
 
 function encodeHeader(payload: TerrainPayload): Uint8Array {
+	const bakedHikingMap = payload.bakedHikingMap
+		? {
+				width: payload.bakedHikingMap.width,
+				height: payload.bakedHikingMap.height,
+				mimeType: payload.bakedHikingMap.mimeType,
+				resolution: payload.bakedHikingMap.resolution,
+				byteLength: dataUrlToBytes(payload.bakedHikingMap.dataUrl).byteLength,
+			}
+		: undefined;
+
 	const header: CimalPackHeader = {
 		version: CIMAL_PACK_VERSION,
 		title: payload.title,
@@ -27,6 +39,7 @@ function encodeHeader(payload: TerrainPayload): Uint8Array {
 		},
 		stats: payload.stats,
 		trackPointCount: payload.track.length,
+		bakedHikingMap,
 	};
 	return encoder.encode(JSON.stringify(header));
 }
@@ -71,17 +84,53 @@ function toByteView(values: Uint16Array | Float32Array): Uint8Array {
 	);
 }
 
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+	const parts = dataUrl.split(",", 2);
+	if (parts.length !== 2) {
+		throw new Error("Invalid baked hiking-map texture data URL.");
+	}
+
+	const [, base64Payload] = parts;
+	if (typeof atob !== "function") {
+		throw new Error("Base64 decoding is unavailable in this runtime.");
+	}
+
+	const binary = atob(base64Payload);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) {
+		bytes[index] = binary.charCodeAt(index);
+	}
+	return bytes;
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
+	if (typeof btoa !== "function") {
+		throw new Error("Base64 encoding is unavailable in this runtime.");
+	}
+
+	let binary = "";
+	for (let index = 0; index < bytes.length; index += 1) {
+		binary += String.fromCharCode(bytes[index]);
+	}
+	const base64 = btoa(binary);
+	return `data:${mimeType};base64,${base64}`;
+}
+
 export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 	const headerBytes = encodeHeader(payload);
 	const headerPaddedLength = align4(headerBytes.length);
 	const gridBytes = toByteView(quantizeGrid(payload));
 	const gridPaddedLength = align4(gridBytes.length);
 	const trackBytes = toByteView(encodeTrack(payload.track));
+	const bakedHikingMapBytes = payload.bakedHikingMap
+		? dataUrlToBytes(payload.bakedHikingMap.dataUrl)
+		: new Uint8Array(0);
 	const output = new Uint8Array(
 		PACK_PREAMBLE_BYTES +
 			headerPaddedLength +
 			gridPaddedLength +
-			trackBytes.length,
+			trackBytes.length +
+			bakedHikingMapBytes.length,
 	);
 	output.set(encoder.encode(PACK_MAGIC), 0);
 
@@ -96,6 +145,10 @@ export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 	output.set(gridBytes, offset);
 	offset += gridPaddedLength;
 	output.set(trackBytes, offset);
+	offset += trackBytes.length;
+	if (bakedHikingMapBytes.length > 0) {
+		output.set(bakedHikingMapBytes, offset);
+	}
 
 	return output;
 }
@@ -112,7 +165,11 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 
 	const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 	const version = view.getUint16(4, true);
-	if (version !== CIMAL_PACK_VERSION) {
+	if (
+		version !== PACK_LEGACY_VERSION &&
+		version !== PACK_IMAGE_FORMAT_VERSION &&
+		version !== CIMAL_PACK_VERSION
+	) {
 		throw new Error(
 			`Unsupported .cimal pack version ${version}. Rebuild the pack.`,
 		);
@@ -142,6 +199,24 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 	const trackEnd = trackStart + trackByteLength;
 	if (trackEnd > data.byteLength) {
 		throw new Error("Invalid .cimal pack: track section is truncated.");
+	}
+
+	let bakedHikingMap: TerrainPayload["bakedHikingMap"];
+	if (version >= PACK_IMAGE_FORMAT_VERSION && header.bakedHikingMap) {
+		const imageStart = trackEnd;
+		const imageEnd = imageStart + header.bakedHikingMap.byteLength;
+		if (imageEnd > data.byteLength) {
+			throw new Error("Invalid .cimal pack: imagery section is truncated.");
+		}
+
+		const imageBytes = data.slice(imageStart, imageEnd);
+		bakedHikingMap = {
+			width: header.bakedHikingMap.width,
+			height: header.bakedHikingMap.height,
+			mimeType: header.bakedHikingMap.mimeType,
+			resolution: header.bakedHikingMap.resolution,
+			dataUrl: bytesToDataUrl(imageBytes, header.bakedHikingMap.mimeType),
+		};
 	}
 
 	// Zero-copy views: gridStart and trackStart are always 4-aligned (preamble is
@@ -189,6 +264,15 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 			maxElevation: header.grid.maxElevation,
 		},
 		track,
+		bakedHikingMap,
 		stats: header.stats,
 	};
+}
+
+export function isInvalidOrOutdatedTerrainPackError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error.message.startsWith("Unsupported .cimal pack version ") ||
+			error.message.startsWith("Invalid .cimal pack:"))
+	);
 }

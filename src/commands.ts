@@ -4,7 +4,11 @@ import {
 	space,
 } from "@silverbulletmd/silverbullet/syscalls";
 import { GPX_WIDGET_LANGUAGE } from "./constants.ts";
-import { normalizeGpxSource, normalizePackPath } from "./input.ts";
+import {
+	normalizeGpxSource,
+	normalizeHikingMapResolution,
+	normalizePackPath,
+} from "./input.ts";
 import { encodeTerrainPack } from "./pack.ts";
 import { buildTerrainPayload } from "./terrain.ts";
 
@@ -49,7 +53,16 @@ export async function buildCimalPackFromGpx(): Promise<void> {
 	}
 
 	const outputPath = normalizePackPath(outputResponse);
-	const payload = await buildTerrainPayload(gpxSource);
+	const resolutionResponse = await editor.prompt(
+		"Baked hiking-map resolution",
+		"standard",
+	);
+	if (!resolutionResponse) {
+		return;
+	}
+
+	const hikingMapResolution = normalizeHikingMapResolution(resolutionResponse);
+	const payload = await buildTerrainPayload(gpxSource, { hikingMapResolution });
 	const packed = encodeTerrainPack(payload);
 	await space.writeFile(outputPath, packed);
 	await editor.flashNotification(`Built ${outputPath}.`);
