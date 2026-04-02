@@ -61,6 +61,13 @@ export type TerrainPayload = {
 	};
 };
 
+export type ViewerStyle = "classic" | "hiking-map" | "vaporwave";
+
+export type ParsedWidgetConfig = {
+	source: string;
+	style: ViewerStyle;
+};
+
 export type ErrorPayload = {
 	title: string;
 	message: string;

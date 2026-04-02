@@ -1,5 +1,5 @@
 import { COPERNICUS_S3_ROOT, THREE_JS_VERSION } from "./constants.ts";
-import type { ErrorPayload, TerrainPayload } from "./types.ts";
+import type { ErrorPayload, TerrainPayload, ViewerStyle } from "./types.ts";
 
 function escapeHtml(value: string): string {
 	return value
@@ -15,6 +15,7 @@ function toEmbeddedJson(payload: ErrorPayload | TerrainPayload): string {
 
 export function buildViewerDataUrl(
 	payload: ErrorPayload | TerrainPayload,
+	viewerStyle: ViewerStyle = "classic",
 ): string {
 	const html = `<!DOCTYPE html>
 <html lang="en">
@@ -214,11 +215,132 @@ export function buildViewerDataUrl(
     <script type="module">
       const payload = JSON.parse(document.getElementById("payload").textContent);
       const app = document.getElementById("app");
+      const viewerStyle = ${JSON.stringify(viewerStyle)};
       const escapeText = (value) => String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+      const styleThemes = {
+        classic: {
+          cssVars: {
+            "--bg-1": "#0d151b",
+            "--bg-2": "#1d2c38",
+            "--card": "rgba(11, 18, 23, 0.78)",
+            "--card-border": "rgba(255, 255, 255, 0.12)",
+            "--accent": "#ff7b32",
+            "--accent-soft": "#ffd08f",
+            "--text": "#eaf2f5",
+            "--muted": "#9db0bb",
+          },
+          styleDescription: "Style: Classic relief tint.",
+          useHikingMap: false,
+          fogColor: 0x102029,
+          hemisphereSky: 0xdaf2ff,
+          hemisphereGround: 0x1b272b,
+          hemisphereIntensity: 1.2,
+          sunColor: 0xfff1d6,
+          sunIntensity: 1.2,
+          terrainStops: [
+            { t: 0.0, color: 0x2f5a38 },
+            { t: 0.24, color: 0x5f8148 },
+            { t: 0.52, color: 0xae8d5a },
+            { t: 0.78, color: 0x757982 },
+            { t: 1.0, color: 0xe6e2d9 },
+          ],
+          sideColor: 0x544d42,
+          bottomColor: 0x403a31,
+          terrainRoughness: 0.94,
+          terrainMetalness: 0.04,
+          trackColor: 0xff7b32,
+          trackEmissive: 0x4a220c,
+          trackEmissiveIntensity: 0.35,
+          startColor: 0x9fe870,
+          finishColor: 0xffd35a,
+          ringColor: 0xffffff,
+          ringOpacity: 0.18,
+        },
+        "hiking-map": {
+          cssVars: {
+            "--bg-1": "#0f1718",
+            "--bg-2": "#21353a",
+            "--card": "rgba(12, 20, 20, 0.78)",
+            "--card-border": "rgba(255, 255, 255, 0.12)",
+            "--accent": "#f18f43",
+            "--accent-soft": "#ffe2a7",
+            "--text": "#eaf2f5",
+            "--muted": "#a2b7b0",
+          },
+          styleDescription: "Imagery: loading OpenHikingMap overlay.",
+          useHikingMap: true,
+          fogColor: 0x112326,
+          hemisphereSky: 0xe0f0f6,
+          hemisphereGround: 0x22302b,
+          hemisphereIntensity: 1.25,
+          sunColor: 0xfff2d2,
+          sunIntensity: 1.25,
+          terrainStops: [
+            { t: 0.0, color: 0x2f5a38 },
+            { t: 0.24, color: 0x5f8148 },
+            { t: 0.52, color: 0xae8d5a },
+            { t: 0.78, color: 0x757982 },
+            { t: 1.0, color: 0xe6e2d9 },
+          ],
+          sideColor: 0x544d42,
+          bottomColor: 0x403a31,
+          terrainRoughness: 0.94,
+          terrainMetalness: 0.04,
+          trackColor: 0xff7b32,
+          trackEmissive: 0x4a220c,
+          trackEmissiveIntensity: 0.35,
+          startColor: 0x9fe870,
+          finishColor: 0xffd35a,
+          ringColor: 0xffffff,
+          ringOpacity: 0.18,
+        },
+        vaporwave: {
+          cssVars: {
+            "--bg-1": "#120621",
+            "--bg-2": "#471565",
+            "--card": "rgba(23, 10, 41, 0.76)",
+            "--card-border": "rgba(255, 255, 255, 0.18)",
+            "--accent": "#ff5fd1",
+            "--accent-soft": "#7efcff",
+            "--text": "#f8edff",
+            "--muted": "#d3a9ea",
+          },
+          styleDescription: "Style: Vaporwave flavour.",
+          useHikingMap: false,
+          fogColor: 0x1b0b2f,
+          hemisphereSky: 0x8acfff,
+          hemisphereGround: 0x25083b,
+          hemisphereIntensity: 1.35,
+          sunColor: 0xff8dd8,
+          sunIntensity: 1.45,
+          terrainStops: [
+            { t: 0.0, color: 0x16113f },
+            { t: 0.22, color: 0x4a1f7a },
+            { t: 0.48, color: 0xff4fd8 },
+            { t: 0.76, color: 0xffa26b },
+            { t: 1.0, color: 0x7efcff },
+          ],
+          sideColor: 0x31164f,
+          bottomColor: 0x190826,
+          terrainRoughness: 0.86,
+          terrainMetalness: 0.08,
+          trackColor: 0x7efcff,
+          trackEmissive: 0x2f8cff,
+          trackEmissiveIntensity: 0.55,
+          startColor: 0x7efcff,
+          finishColor: 0xffe36e,
+          ringColor: 0xff5fd1,
+          ringOpacity: 0.3,
+        },
+      };
+      const activeTheme = styleThemes[viewerStyle] ?? styleThemes.classic;
+      for (const [name, value] of Object.entries(activeTheme.cssVars)) {
+        document.documentElement.style.setProperty(name, value);
+      }
 
       if (payload.message) {
         app.innerHTML = \`
@@ -270,14 +392,14 @@ export function buildViewerDataUrl(
           </aside>
           \${warning ? \`<aside class="warning">\${escapeText(warning)}</aside>\` : ""}
           <footer class="attribution">
-            <p id="imagery-attribution">Imagery: loading OpenHikingMap overlay.</p>
+            <p id="style-attribution"></p>
             <p>Terrain: <a href="https://copernicus-dem-30m.s3.amazonaws.com/readme.html" target="_blank" rel="noreferrer">${COPERNICUS_S3_ROOT}</a>.</p>
             <p>Click the map to focus it. Drag to orbit, wheel to zoom, right-click to pan. Keyboard: arrows orbit, WASD pan, R/F zoom.</p>
           </footer>
         \`;
 
         const canvas = document.getElementById("scene");
-        const imageryAttribution = document.getElementById("imagery-attribution");
+        const styleAttribution = document.getElementById("style-attribution");
         canvas.tabIndex = 0;
         canvas.setAttribute("aria-label", "3D terrain map");
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -285,7 +407,7 @@ export function buildViewerDataUrl(
         renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x102029, fogDensity);
+        scene.fog = new THREE.FogExp2(activeTheme.fogColor, fogDensity);
 
         const camera = new THREE.PerspectiveCamera(52, 1, 1, 200000);
         camera.position.set(spanX * 0.6, Math.max(spanX, spanZ) * 0.45, spanZ * 0.8);
@@ -465,18 +587,24 @@ export function buildViewerDataUrl(
         canvas.addEventListener("blur", clearPressedKeys);
         window.addEventListener("blur", clearPressedKeys);
 
-        scene.add(new THREE.HemisphereLight(0xdaf2ff, 0x1b272b, 1.2));
-        const sun = new THREE.DirectionalLight(0xfff1d6, 1.2);
+        scene.add(
+          new THREE.HemisphereLight(
+            activeTheme.hemisphereSky,
+            activeTheme.hemisphereGround,
+            activeTheme.hemisphereIntensity,
+          )
+        );
+        const sun = new THREE.DirectionalLight(
+          activeTheme.sunColor,
+          activeTheme.sunIntensity,
+        );
         sun.position.set(-spanX * 0.5, Math.max(spanX, spanZ), spanZ * 0.4);
         scene.add(sun);
 
-        const terrainStops = [
-          { t: 0.0, color: new THREE.Color(0x2f5a38) },
-          { t: 0.24, color: new THREE.Color(0x5f8148) },
-          { t: 0.52, color: new THREE.Color(0xae8d5a) },
-          { t: 0.78, color: new THREE.Color(0x757982) },
-          { t: 1.0, color: new THREE.Color(0xe6e2d9) },
-        ];
+        const terrainStops = activeTheme.terrainStops.map((stop) => ({
+          t: stop.t,
+          color: new THREE.Color(stop.color),
+        }));
 
         function sampleTerrainColor(normalized) {
           if (normalized <= terrainStops[0].t) {
@@ -497,12 +625,14 @@ export function buildViewerDataUrl(
 
         const OPEN_HIKING_TILE_URL = "https://tile.openmaps.fr/openhikingmap/{z}/{x}/{y}.png";
         const OPEN_HIKING_ATTRIBUTION = 'Imagery: <a href="https://tile.openmaps.fr/" target="_blank" rel="noreferrer">OpenHikingMap</a> with <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> data.';
-        const OPEN_HIKING_FALLBACK = "Imagery unavailable; showing elevation shading only.";
+        const OPEN_HIKING_FALLBACK = "Imagery unavailable; showing classic relief tint instead.";
         const TILE_SIZE = 256;
         const INITIAL_TILE_ZOOM = 12;
         const MIN_TILE_ZOOM = 6;
         const MAX_TILE_REQUESTS = 24;
         const MAX_TEXTURE_DIMENSION = 4096;
+
+        styleAttribution.textContent = activeTheme.styleDescription;
 
         function clampLatitude(latitude) {
           return THREE.MathUtils.clamp(latitude, -85.05112878, 85.05112878);
@@ -798,8 +928,8 @@ export function buildViewerDataUrl(
         const geometry = new THREE.BufferGeometry();
         const vertexCount = grid.width * grid.height;
         const positions = new Float32Array(vertexCount * 3);
-        const fallbackColors = new Float32Array(vertexCount * 3);
-        const texturedColors = new Float32Array(vertexCount * 3);
+        const terrainColors = new Float32Array(vertexCount * 3);
+        const hikingTextureBlendColors = new Float32Array(vertexCount * 3);
         const uvs = new Float32Array(vertexCount * 2);
         const indices = [];
 
@@ -820,14 +950,14 @@ export function buildViewerDataUrl(
             positions[pointer + 2] = z;
 
             const fallbackColor = sampleTerrainColor(Math.pow(normalized, 0.92));
-            fallbackColors[pointer] = fallbackColor.r;
-            fallbackColors[pointer + 1] = fallbackColor.g;
-            fallbackColors[pointer + 2] = fallbackColor.b;
+            terrainColors[pointer] = fallbackColor.r;
+            terrainColors[pointer + 1] = fallbackColor.g;
+            terrainColors[pointer + 2] = fallbackColor.b;
 
             const reliefShade = THREE.MathUtils.lerp(0.82, 0.98, Math.pow(normalized, 0.85));
-            texturedColors[pointer] = reliefShade;
-            texturedColors[pointer + 1] = reliefShade;
-            texturedColors[pointer + 2] = reliefShade;
+            hikingTextureBlendColors[pointer] = reliefShade;
+            hikingTextureBlendColors[pointer + 1] = reliefShade;
+            hikingTextureBlendColors[pointer + 2] = reliefShade;
 
             uvs[uvPointer] = columnRatio;
             uvs[uvPointer + 1] = 1 - rowRatio;
@@ -850,14 +980,14 @@ export function buildViewerDataUrl(
 
         geometry.setIndex(indices);
         geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute("color", new THREE.BufferAttribute(fallbackColors, 3));
+        geometry.setAttribute("color", new THREE.BufferAttribute(terrainColors, 3));
         geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
         geometry.computeVertexNormals();
 
         const terrainMaterial = new THREE.MeshStandardMaterial({
           vertexColors: true,
-          roughness: 0.94,
-          metalness: 0.04,
+          roughness: activeTheme.terrainRoughness,
+          metalness: activeTheme.terrainMetalness,
         });
         const terrainDepth = Math.max(90, elevationRange * exaggeration * 0.42, sceneSpan * 0.08);
         const terrainBottomY = -terrainDepth;
@@ -868,7 +998,7 @@ export function buildViewerDataUrl(
           terrainBottomY,
         );
         const sideMaterial = new THREE.MeshStandardMaterial({
-          color: 0x544d42,
+          color: activeTheme.sideColor,
           roughness: 0.98,
           metalness: 0.02,
           side: THREE.DoubleSide,
@@ -881,7 +1011,7 @@ export function buildViewerDataUrl(
         const terrainBottom = new THREE.Mesh(
           bottomGeometry,
           new THREE.MeshStandardMaterial({
-            color: 0x403a31,
+            color: activeTheme.bottomColor,
             roughness: 1,
             metalness: 0,
             side: THREE.DoubleSide,
@@ -893,18 +1023,20 @@ export function buildViewerDataUrl(
         const terrain = new THREE.Mesh(geometry, terrainMaterial);
         scene.add(terrain);
 
-        buildOpenHikingTexture()
-          .then(({ texture, zoom, tileCount }) => {
-            geometry.setAttribute("color", new THREE.BufferAttribute(texturedColors, 3));
-            geometry.attributes.color.needsUpdate = true;
-            terrainMaterial.map = texture;
-            terrainMaterial.needsUpdate = true;
-            imageryAttribution.innerHTML = \`\${OPEN_HIKING_ATTRIBUTION} <span>Loaded \${tileCount} tiles at z\${zoom}.</span>\`;
-          })
-          .catch((error) => {
-            console.warn(error);
-            imageryAttribution.textContent = OPEN_HIKING_FALLBACK;
-          });
+        if (activeTheme.useHikingMap) {
+          buildOpenHikingTexture()
+            .then(({ texture, zoom, tileCount }) => {
+              geometry.setAttribute("color", new THREE.BufferAttribute(hikingTextureBlendColors, 3));
+              geometry.attributes.color.needsUpdate = true;
+              terrainMaterial.map = texture;
+              terrainMaterial.needsUpdate = true;
+              styleAttribution.innerHTML = \`\${OPEN_HIKING_ATTRIBUTION} <span>Loaded \${tileCount} tiles at z\${zoom}.</span>\`;
+            })
+            .catch((error) => {
+              console.warn(error);
+              styleAttribution.textContent = OPEN_HIKING_FALLBACK;
+            });
+        }
 
         const trackRibbonWidth = THREE.MathUtils.clamp(sceneSpan * 0.012, 14, 60);
         const trackHeightOffset = THREE.MathUtils.clamp(sceneSpan * 0.0035, 12, 24);
@@ -913,11 +1045,11 @@ export function buildViewerDataUrl(
           const trackRibbon = new THREE.Mesh(
             trackGeometry,
             new THREE.MeshStandardMaterial({
-              color: 0xff7b32,
+              color: activeTheme.trackColor,
               roughness: 0.42,
               metalness: 0.05,
-              emissive: 0x4a220c,
-              emissiveIntensity: 0.35,
+              emissive: activeTheme.trackEmissive,
+              emissiveIntensity: activeTheme.trackEmissiveIntensity,
               side: THREE.DoubleSide,
             }),
           );
@@ -925,8 +1057,8 @@ export function buildViewerDataUrl(
         }
 
         const markerGeometry = new THREE.SphereGeometry(Math.max(6, Math.min(spanX, spanZ) * 0.008), 18, 18);
-        const startMaterial = new THREE.MeshStandardMaterial({ color: 0x9fe870 });
-        const finishMaterial = new THREE.MeshStandardMaterial({ color: 0xffd35a });
+        const startMaterial = new THREE.MeshStandardMaterial({ color: activeTheme.startColor });
+        const finishMaterial = new THREE.MeshStandardMaterial({ color: activeTheme.finishColor });
         const start = track[0];
         const end = track[track.length - 1];
 
@@ -949,7 +1081,7 @@ export function buildViewerDataUrl(
         const ringGeometry = new THREE.RingGeometry(Math.max(10, Math.min(spanX, spanZ) * 0.01), Math.max(16, Math.min(spanX, spanZ) * 0.016), 48);
         const ring = new THREE.Mesh(
           ringGeometry,
-          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, side: THREE.DoubleSide }),
+          new THREE.MeshBasicMaterial({ color: activeTheme.ringColor, transparent: true, opacity: activeTheme.ringOpacity, side: THREE.DoubleSide }),
         );
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 2;

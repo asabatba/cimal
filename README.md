@@ -8,8 +8,9 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Inserts a `cimal` code widget block that points at a `.cimal` pack file.
 - Auto-builds and caches `.cimal` packs when a widget body contains a GPX source.
 - Loads the surrounding Copernicus DEM tiles from the public AWS bucket.
-- Overlays OpenHikingMap raster tiles on the 3D terrain surface at render time when available.
-- Falls back to elevation-based terrain shading if the external imagery tiles are unavailable.
+- Supports three per-widget visual styles: `classic`, `hiking-map`, and `vaporwave`.
+- Overlays OpenHikingMap raster tiles on the 3D terrain surface when `style: hiking-map` is selected.
+- Falls back to classic elevation-based terrain shading if external imagery tiles are unavailable.
 - Renders the route as an interactive Three.js scene with orbit controls and basic route stats.
 
 ## Usage
@@ -31,6 +32,7 @@ You can also write the widget block manually:
 ````markdown
 ```cimal
 Library/Cimal/track.cimal
+style: classic
 ```
 ````
 
@@ -39,12 +41,24 @@ Or point the widget directly at a GPX source and let Cimal cache the generated p
 ````markdown
 ```cimal
 Library/Tracks/track.gpx
+style: hiking-map
+```
+````
+
+Or use the vaporwave viewer flavour on any widget instance:
+
+````markdown
+```cimal
+Library/Cimal/track.cimal
+style: vaporwave
 ```
 ````
 
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
-At render time, the iframe viewer also tries to stitch OpenHikingMap tiles over the DEM mesh for additional context. The `.cimal` pack still only stores terrain and track data; raster imagery is fetched live and the viewer falls back to the built-in terrain shading if those tile requests fail.
+The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
+
+At render time, the iframe viewer only fetches live OpenHikingMap raster imagery for `style: hiking-map`. The `.cimal` pack still only stores terrain and track data, and the viewer falls back to the built-in classic relief tint if those tile requests fail.
 
 If a `cimal` widget contains a raw GPX URL or GPX space path, Cimal now builds a `.cimal` pack automatically and caches it under `Library/.cache/cimal/packs/`. The cache key includes the GPX content hash, so editing a space GPX file produces a fresh cached pack.
 

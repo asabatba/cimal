@@ -6,10 +6,14 @@ import {
 	putCachedPack,
 } from "./cache.ts";
 import { readGpxXml } from "./gpx.ts";
-import { extractGpxSource, extractPackPath } from "./input.ts";
+import {
+	normalizeGpxSource,
+	normalizePackPath,
+	parseWidgetConfig,
+} from "./input.ts";
 import { decodeTerrainPack, encodeTerrainPack } from "./pack.ts";
 import { buildTerrainPayloadFromGpxXml } from "./terrain.ts";
-import type { ErrorPayload } from "./types.ts";
+import type { ErrorPayload, ParsedWidgetConfig } from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
 
 function buildError(
@@ -25,21 +29,36 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	width: number;
 	height: number;
 }> {
+	let widgetConfig: ParsedWidgetConfig;
+	try {
+		widgetConfig = parseWidgetConfig(bodyText);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Unknown error";
+		return {
+			url: buildViewerDataUrl(
+				buildError("Cimal widget configuration error", message),
+			),
+			width: 960,
+			height: 340,
+		};
+	}
+
+	const { source, style } = widgetConfig;
 	let primaryError: unknown = null;
 
 	try {
-		const packPath = extractPackPath(bodyText);
+		const packPath = normalizePackPath(source);
 		const packed = await space.readFile(packPath);
 		const payload = decodeTerrainPack(packed);
 		return {
-			url: buildViewerDataUrl(payload),
+			url: buildViewerDataUrl(payload, style),
 			width: 960,
 			height: 600,
 		};
 	} catch (error) {
 		primaryError = error;
 		try {
-			const gpxSource = extractGpxSource(bodyText);
+			const gpxSource = normalizeGpxSource(source);
 			const xml = await readGpxXml(gpxSource);
 			const cacheKey = buildCimalPackCacheKey(gpxSource, xml);
 			let packed = await getCachedPack(cacheKey);
@@ -51,7 +70,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 			}
 			const payload = decodeTerrainPack(packed);
 			return {
-				url: buildViewerDataUrl(payload),
+				url: buildViewerDataUrl(payload, style),
 				width: 960,
 				height: 600,
 			};
@@ -62,7 +81,10 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		const message =
 			primaryError instanceof Error ? primaryError.message : "Unknown error";
 		return {
-			url: buildViewerDataUrl(buildError("Cimal pack preview failed", message)),
+			url: buildViewerDataUrl(
+				buildError("Cimal pack preview failed", message),
+				style,
+			),
 			width: 960,
 			height: 340,
 		};

@@ -1,3 +1,12 @@
+import type { ParsedWidgetConfig, ViewerStyle } from "./types.ts";
+
+const DEFAULT_VIEWER_STYLE: ViewerStyle = "classic";
+const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
+	"classic",
+	"hiking-map",
+	"vaporwave",
+];
+
 function isRemoteUrl(candidate: string): boolean {
 	return /^https?:\/\//i.test(candidate);
 }
@@ -53,17 +62,62 @@ export function normalizeGpxUrl(input: string): string {
 	return normalizeGpxSource(input);
 }
 
-export function extractGpxSource(bodyText: string): string {
-	const lines = bodyText.split(/\r?\n/);
-	const firstMeaningfulLine = lines
-		.map((line) => line.trim())
-		.find((line) => line && !line.startsWith("#"));
-
-	if (!firstMeaningfulLine) {
-		throw new Error("Add a GPX URL or space path inside the widget body.");
+export function normalizeViewerStyle(input: string): ViewerStyle {
+	const normalized = input.trim().toLowerCase();
+	if (SUPPORTED_VIEWER_STYLES.includes(normalized as ViewerStyle)) {
+		return normalized as ViewerStyle;
 	}
 
-	return normalizeGpxSource(firstMeaningfulLine);
+	throw new Error(
+		`Unsupported cimal style "${input.trim()}". Supported styles: ${SUPPORTED_VIEWER_STYLES.join(", ")}.`,
+	);
+}
+
+export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
+	const meaningfulLines = bodyText
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter((line) => line && !line.startsWith("#"));
+
+	if (meaningfulLines.length === 0) {
+		throw new Error(
+			"Add a .cimal pack path or GPX source inside the widget body.",
+		);
+	}
+
+	const [sourceLine, ...optionLines] = meaningfulLines;
+	if (/^style\s*:/i.test(sourceLine)) {
+		throw new Error(
+			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave below it.",
+		);
+	}
+
+	let style = DEFAULT_VIEWER_STYLE;
+	let sawStyle = false;
+	for (const line of optionLines) {
+		const styleMatch = /^style\s*:\s*(.+)$/i.exec(line);
+		if (styleMatch) {
+			if (sawStyle) {
+				throw new Error("Duplicate style option in cimal widget body.");
+			}
+			style = normalizeViewerStyle(styleMatch[1]);
+			sawStyle = true;
+			continue;
+		}
+
+		throw new Error(
+			`Unsupported cimal widget option "${line}". Supported option: style: classic|hiking-map|vaporwave.`,
+		);
+	}
+
+	return {
+		source: sourceLine,
+		style,
+	};
+}
+
+export function extractGpxSource(bodyText: string): string {
+	return normalizeGpxSource(parseWidgetConfig(bodyText).source);
 }
 
 export function extractGpxUrl(bodyText: string): string {
@@ -81,14 +135,5 @@ export function normalizePackPath(input: string): string {
 }
 
 export function extractPackPath(bodyText: string): string {
-	const lines = bodyText.split(/\r?\n/);
-	const firstMeaningfulLine = lines
-		.map((line) => line.trim())
-		.find((line) => line && !line.startsWith("#"));
-
-	if (!firstMeaningfulLine) {
-		throw new Error("Add a .cimal pack path inside the widget body.");
-	}
-
-	return normalizePackPath(firstMeaningfulLine);
+	return normalizePackPath(parseWidgetConfig(bodyText).source);
 }
