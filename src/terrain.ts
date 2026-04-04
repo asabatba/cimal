@@ -26,10 +26,10 @@ import type {
 	LocalPoint,
 	TerrainPayload,
 } from "./types.ts";
+import { DEFAULT_HIKING_MAP_RESOLUTION } from "./viewerConfig.ts";
 
 const TRACK_RESAMPLE_SPACING_METERS = 50;
 const TRACK_VISUAL_MARGIN_METERS = 180;
-const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
 
 type TerrainBuildOptions = {
 	hikingMapResolution?: HikingMapResolution;

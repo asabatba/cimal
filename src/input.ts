@@ -3,20 +3,16 @@ import type {
 	ParsedWidgetConfig,
 	ViewerStyle,
 } from "./types.ts";
+import {
+	DEFAULT_HIKING_MAP_RESOLUTION,
+	DEFAULT_VIEWER_STYLE,
+	SUPPORTED_HIKING_MAP_RESOLUTIONS,
+	SUPPORTED_VIEWER_STYLES,
+} from "./viewerConfig.ts";
 
-const DEFAULT_VIEWER_STYLE: ViewerStyle = "classic";
-const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
-const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
-	"classic",
-	"hiking-map",
-	"vaporwave",
-];
-const SUPPORTED_HIKING_MAP_RESOLUTIONS: HikingMapResolution[] = [
-	"low",
-	"standard",
-	"high",
-	"ultra",
-];
+export type ResolvedWidgetSource =
+	| { kind: "pack"; packPath: string }
+	| { kind: "gpx"; gpxSource: string };
 
 function isRemoteUrl(candidate: string): boolean {
 	return /^https?:\/\//i.test(candidate);
@@ -169,7 +165,13 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 }
 
 export function extractGpxSource(bodyText: string): string {
-	return normalizeGpxSource(parseWidgetConfig(bodyText).source);
+	const resolvedSource = resolveWidgetSource(parseWidgetConfig(bodyText));
+	if (resolvedSource.kind !== "gpx") {
+		throw new Error(
+			"Cimal widgets now accept only GPX URLs or space paths here.",
+		);
+	}
+	return resolvedSource.gpxSource;
 }
 
 export function extractGpxUrl(bodyText: string): string {
@@ -187,5 +189,38 @@ export function normalizePackPath(input: string): string {
 }
 
 export function extractPackPath(bodyText: string): string {
-	return normalizePackPath(parseWidgetConfig(bodyText).source);
+	const resolvedSource = resolveWidgetSource(parseWidgetConfig(bodyText));
+	if (resolvedSource.kind !== "pack") {
+		throw new Error(
+			"Cimal widgets now accept only .cimal pack paths. Build a pack from the GPX first.",
+		);
+	}
+	return resolvedSource.packPath;
+}
+
+export function resolveWidgetSource(
+	config: ParsedWidgetConfig,
+): ResolvedWidgetSource {
+	const normalizedSource = normalizeSpacePath(config.source);
+	const isGpxSource =
+		isRemoteUrl(normalizedSource) || /\.gpx$/i.test(normalizedSource);
+
+	if (isGpxSource) {
+		return {
+			kind: "gpx",
+			gpxSource: normalizeGpxSource(normalizedSource),
+		};
+	}
+
+	const packPath = normalizePackPath(normalizedSource);
+	if (config.hasExplicitHikingMapResolution) {
+		throw new Error(
+			'Hiking-map resolution is baked into existing .cimal packs. Rebuild the pack from the GPX at the desired resolution instead of setting "hiking-map-resolution" on a .cimal widget.',
+		);
+	}
+
+	return {
+		kind: "pack",
+		packPath,
+	};
 }

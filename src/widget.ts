@@ -7,11 +7,8 @@ import {
 	putCachedPack,
 } from "./cache.ts";
 import { readGpxXml } from "./gpx.ts";
-import {
-	normalizeGpxSource,
-	normalizePackPath,
-	parseWidgetConfig,
-} from "./input.ts";
+import type { ResolvedWidgetSource } from "./input.ts";
+import { parseWidgetConfig, resolveWidgetSource } from "./input.ts";
 import {
 	decodeTerrainPack,
 	encodeTerrainPack,
@@ -22,6 +19,7 @@ import type {
 	ErrorPayload,
 	ParsedWidgetConfig,
 	TerrainPayload,
+	ViewerConfig,
 } from "./types.ts";
 import { buildViewerDataUrl } from "./viewerHtml.ts";
 
@@ -31,6 +29,97 @@ function buildError(
 	details?: string,
 ): ErrorPayload {
 	return { title, message, details };
+}
+
+const WIDGET_WIDTH = 960;
+const WIDGET_HEIGHT = 600;
+const ERROR_WIDGET_HEIGHT = 340;
+
+function buildWidgetErrorResult(
+	title: string,
+	message: string,
+	viewerConfig?: ViewerConfig,
+): {
+	url: string;
+	width: number;
+	height: number;
+} {
+	return {
+		url: buildViewerDataUrl(buildError(title, message), viewerConfig),
+		width: WIDGET_WIDTH,
+		height: ERROR_WIDGET_HEIGHT,
+	};
+}
+
+function buildWidgetSuccessResult(
+	payload: TerrainPayload,
+	viewerConfig: ViewerConfig,
+): {
+	url: string;
+	width: number;
+	height: number;
+} {
+	return {
+		url: buildViewerDataUrl(payload, viewerConfig),
+		width: WIDGET_WIDTH,
+		height: WIDGET_HEIGHT,
+	};
+}
+
+async function renderPackWidget(
+	packPath: string,
+	viewerConfig: ViewerConfig,
+): Promise<{
+	url: string;
+	width: number;
+	height: number;
+}> {
+	const packed = await space.readFile(packPath);
+	const payload = decodeTerrainPack(packed);
+	return buildWidgetSuccessResult(payload, viewerConfig);
+}
+
+async function loadOrBuildGpxPayload(
+	gpxSource: string,
+	hikingMapResolution: ViewerConfig["hikingMapResolution"],
+): Promise<TerrainPayload> {
+	const xml = await readGpxXml(gpxSource);
+	const cacheKey = buildCimalPackCacheKey(gpxSource, xml, hikingMapResolution);
+	let packed = await getCachedPack(cacheKey);
+
+	if (packed) {
+		try {
+			return decodeTerrainPack(packed);
+		} catch (error) {
+			if (!isInvalidOrOutdatedTerrainPackError(error)) {
+				throw error;
+			}
+			await invalidateCachedPack(cacheKey);
+			packed = null;
+		}
+	}
+
+	const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml, {
+		hikingMapResolution,
+	});
+	const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
+	await putCachedPack(cacheEntry.key, cacheEntry.path, encodeTerrainPack(payload));
+	return payload;
+}
+
+async function renderGpxSourceWidget(
+	gpxSource: string,
+	viewerConfig: ViewerConfig,
+): Promise<{
+	url: string;
+	width: number;
+	height: number;
+}> {
+	const payload = await loadOrBuildGpxPayload(
+		gpxSource,
+		viewerConfig.hikingMapResolution,
+	);
+	return buildWidgetSuccessResult(payload, viewerConfig);
 }
 
 export async function renderGpxTerrainWidget(bodyText: string): Promise<{
@@ -43,107 +132,34 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		widgetConfig = parseWidgetConfig(bodyText);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unknown error";
-		return {
-			url: buildViewerDataUrl(
-				buildError("Cimal widget configuration error", message),
-			),
-			width: 960,
-			height: 340,
-		};
+		return buildWidgetErrorResult("Cimal widget configuration error", message);
 	}
 
-	const { source, hasExplicitHikingMapResolution, ...viewerConfig } =
+	const { source: _source, hasExplicitHikingMapResolution: _resolution, ...viewerConfig } =
 		widgetConfig;
-	let packPath: string | null = null;
+	let resolvedSource: ResolvedWidgetSource;
 	try {
-		packPath = normalizePackPath(source);
-	} catch {
-		packPath = null;
-	}
-
-	if (packPath && hasExplicitHikingMapResolution) {
-		const message =
-			'Hiking-map resolution is baked into existing .cimal packs. Rebuild the pack from the GPX at the desired resolution instead of setting "hiking-map-resolution" on a .cimal widget.';
-		return {
-			url: buildViewerDataUrl(
-				buildError("Cimal widget configuration error", message),
-				viewerConfig,
-			),
-			width: 960,
-			height: 340,
-		};
-	}
-
-	let primaryError: unknown = null;
-
-	try {
-		if (!packPath) {
-			throw new Error("Source is not a .cimal pack path.");
-		}
-		const packed = await space.readFile(packPath);
-		const payload = decodeTerrainPack(packed);
-		return {
-			url: buildViewerDataUrl(payload, viewerConfig),
-			width: 960,
-			height: 600,
-		};
+		resolvedSource = resolveWidgetSource(widgetConfig);
 	} catch (error) {
-		primaryError = error;
-		try {
-			const gpxSource = normalizeGpxSource(source);
-			const xml = await readGpxXml(gpxSource);
-			const cacheKey = buildCimalPackCacheKey(
-				gpxSource,
-				xml,
-				viewerConfig.hikingMapResolution,
-			);
-			let packed = await getCachedPack(cacheKey);
-			let payload: TerrainPayload | null = null;
-			if (packed) {
-				try {
-					payload = decodeTerrainPack(packed);
-				} catch (cachedPackError) {
-					if (!isInvalidOrOutdatedTerrainPackError(cachedPackError)) {
-						throw cachedPackError;
-					}
-					await invalidateCachedPack(cacheKey);
-					packed = null;
-				}
-			}
-			if (!packed) {
-				const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml, {
-					hikingMapResolution: viewerConfig.hikingMapResolution,
-				});
-				packed = encodeTerrainPack(payload);
-				const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
-				await putCachedPack(cacheEntry.key, cacheEntry.path, packed);
-				return {
-					url: buildViewerDataUrl(payload, viewerConfig),
-					width: 960,
-					height: 600,
-				};
-			}
-			if (!payload) {
-				throw new Error("Cached .cimal pack could not be decoded.");
-			}
-			return {
-				url: buildViewerDataUrl(payload, viewerConfig),
-				width: 960,
-				height: 600,
-			};
-		} catch (gpxError) {
-			primaryError = gpxError;
-		}
+		const message = error instanceof Error ? error.message : "Unknown error";
+		return buildWidgetErrorResult(
+			"Cimal widget configuration error",
+			message,
+			viewerConfig,
+		);
+	}
 
-		const message =
-			primaryError instanceof Error ? primaryError.message : "Unknown error";
-		return {
-			url: buildViewerDataUrl(
-				buildError("Cimal pack preview failed", message),
-				viewerConfig,
-			),
-			width: 960,
-			height: 340,
-		};
+	try {
+		if (resolvedSource.kind === "pack") {
+			return await renderPackWidget(resolvedSource.packPath, viewerConfig);
+		}
+		return await renderGpxSourceWidget(resolvedSource.gpxSource, viewerConfig);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Unknown error";
+		const title =
+			resolvedSource.kind === "pack"
+				? "Cimal pack preview failed"
+				: "GPX terrain preview failed";
+		return buildWidgetErrorResult(title, message, viewerConfig);
 	}
 }

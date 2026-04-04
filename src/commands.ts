@@ -11,6 +11,7 @@ import {
 } from "./input.ts";
 import { encodeTerrainPack } from "./pack.ts";
 import { buildTerrainPayload } from "./terrain.ts";
+import { DEFAULT_HIKING_MAP_RESOLUTION } from "./viewerConfig.ts";
 
 function buildWidgetSnippet(packPath: string): string {
 	return `\n\`\`\`${GPX_WIDGET_LANGUAGE}\n${packPath}\n\`\`\`\n`;
@@ -55,7 +56,7 @@ export async function buildCimalPackFromGpx(): Promise<void> {
 	const outputPath = normalizePackPath(outputResponse);
 	const resolutionResponse = await editor.prompt(
 		"Baked hiking-map resolution",
-		"standard",
+		DEFAULT_HIKING_MAP_RESOLUTION,
 	);
 	if (!resolutionResponse) {
 		return;

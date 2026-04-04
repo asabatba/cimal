@@ -5,15 +5,12 @@ import type {
 	ViewerConfig,
 	ViewerStyle,
 } from "./types.ts";
+import { DEFAULT_VIEWER_CONFIG } from "./viewerConfig.ts";
 
 const TITLE_PLACEHOLDER = "__CIMAL_VIEWER_TITLE__";
 const PAYLOAD_PLACEHOLDER = "__CIMAL_VIEWER_PAYLOAD__";
 const CONFIG_PLACEHOLDER = "__CIMAL_VIEWER_CONFIG__";
 const MAX_EMBEDDED_BAKED_TEXTURE_DATA_URL_LENGTH = 1_200_000;
-const DEFAULT_VIEWER_CONFIG: ViewerConfig = {
-	style: "classic",
-	hikingMapResolution: "standard",
-};
 
 function escapeHtml(value: string): string {
 	return value

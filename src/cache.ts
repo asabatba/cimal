@@ -26,9 +26,27 @@ const TILE_MAGIC = "TGPC";
 const memoryTileCache = new Map<string, SampledTile>();
 const memoryHikingMapTileCache = new Map<string, Uint8Array>();
 const memoryPackCache = new Map<string, Uint8Array>();
-let memoryIndexCache: TerrainCacheIndex | null = null;
-let memoryHikingMapTileIndexCache: TerrainCacheIndex | null = null;
-let memoryPackIndexCache: TerrainCacheIndex | null = null;
+
+type CacheStoreConfig<T> = {
+	version: number;
+	rootPath: string;
+	indexPath: string;
+	maxBytes: number;
+	memoryCache: Map<string, T>;
+	encode: (value: T) => Uint8Array;
+	decode: (bytes: Uint8Array) => T;
+	deleteMemoryEntry: (key: string) => void;
+	onDecodeError?: (key: string, error: unknown) => void;
+};
+
+type CacheStore<T> = {
+	getMemory(key: string): T | undefined;
+	loadIndex: () => Promise<TerrainCacheIndex>;
+	get: (key: string) => Promise<T | null>;
+	put: (key: string, path: string, value: T) => Promise<void>;
+	invalidate: (key: string) => Promise<void>;
+	clear: () => Promise<number>;
+};
 
 function isUnsupportedCacheVersionError(error: unknown): boolean {
 	return (
@@ -265,97 +283,208 @@ function totalCacheBytes(index: TerrainCacheIndex): number {
 	);
 }
 
-async function deleteCacheEntry(
-	index: TerrainCacheIndex,
-	entry: TerrainCacheIndexEntry,
-): Promise<void> {
-	memoryTileCache.delete(entry.key);
-	delete index.entries[entry.key];
-	if (await space.fileExists(entry.path)) {
-		await space.deleteFile(entry.path);
-	}
-}
+function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
+	let memoryIndexCache: TerrainCacheIndex | null = null;
 
-async function enforceCacheLimit(index: TerrainCacheIndex): Promise<void> {
-	let currentBytes = totalCacheBytes(index);
-	if (currentBytes <= TERRAIN_CACHE_MAX_BYTES) {
-		return;
+	async function persistIndex(index: TerrainCacheIndex): Promise<void> {
+		memoryIndexCache = index;
+		await space.writeFile(
+			config.indexPath,
+			encoder.encode(JSON.stringify(index)),
+		);
 	}
 
-	const entries = Object.values(index.entries).sort(
-		(left, right) => left.lastUsed - right.lastUsed,
-	);
+	async function resetIndex(): Promise<TerrainCacheIndex> {
+		if (await space.fileExists(config.indexPath)) {
+			await space.deleteFile(config.indexPath);
+		}
+		memoryIndexCache = createEmptyIndex(config.version);
+		return memoryIndexCache;
+	}
 
-	for (const entry of entries) {
-		await deleteCacheEntry(index, entry);
-		currentBytes -= entry.size;
-		if (currentBytes <= TERRAIN_CACHE_MAX_BYTES) {
-			break;
+	async function loadIndex(): Promise<TerrainCacheIndex> {
+		if (memoryIndexCache) {
+			return memoryIndexCache;
+		}
+
+		if (!(await space.fileExists(config.indexPath))) {
+			memoryIndexCache = createEmptyIndex(config.version);
+			return memoryIndexCache;
+		}
+
+		try {
+			const data = await space.readFile(config.indexPath);
+			const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
+			if (parsed.version !== config.version || !parsed.entries) {
+				return resetIndex();
+			}
+			memoryIndexCache = parsed;
+			return memoryIndexCache;
+		} catch {
+			return resetIndex();
 		}
 	}
-}
 
-async function deletePackCacheEntry(
-	index: TerrainCacheIndex,
-	entry: TerrainCacheIndexEntry,
-): Promise<void> {
-	memoryPackCache.delete(entry.key);
-	delete index.entries[entry.key];
-	if (await space.fileExists(entry.path)) {
-		await space.deleteFile(entry.path);
-	}
-}
-
-async function deleteHikingMapTileCacheEntry(
-	index: TerrainCacheIndex,
-	entry: TerrainCacheIndexEntry,
-): Promise<void> {
-	memoryHikingMapTileCache.delete(entry.key);
-	delete index.entries[entry.key];
-	if (await space.fileExists(entry.path)) {
-		await space.deleteFile(entry.path);
-	}
-}
-
-async function enforcePackCacheLimit(index: TerrainCacheIndex): Promise<void> {
-	let currentBytes = totalCacheBytes(index);
-	if (currentBytes <= CIMAL_PACK_CACHE_MAX_BYTES) {
-		return;
-	}
-
-	const entries = Object.values(index.entries).sort(
-		(left, right) => left.lastUsed - right.lastUsed,
-	);
-
-	for (const entry of entries) {
-		await deletePackCacheEntry(index, entry);
-		currentBytes -= entry.size;
-		if (currentBytes <= CIMAL_PACK_CACHE_MAX_BYTES) {
-			break;
+	async function deleteEntry(
+		index: TerrainCacheIndex,
+		entry: TerrainCacheIndexEntry,
+	): Promise<void> {
+		config.deleteMemoryEntry(entry.key);
+		delete index.entries[entry.key];
+		if (await space.fileExists(entry.path)) {
+			await space.deleteFile(entry.path);
 		}
 	}
-}
 
-async function enforceHikingMapTileCacheLimit(
-	index: TerrainCacheIndex,
-): Promise<void> {
-	let currentBytes = totalCacheBytes(index);
-	if (currentBytes <= HIKING_MAP_TILE_CACHE_MAX_BYTES) {
-		return;
-	}
+	async function enforceLimit(index: TerrainCacheIndex): Promise<void> {
+		let currentBytes = totalCacheBytes(index);
+		if (currentBytes <= config.maxBytes) {
+			return;
+		}
 
-	const entries = Object.values(index.entries).sort(
-		(left, right) => left.lastUsed - right.lastUsed,
-	);
+		const entries = Object.values(index.entries).sort(
+			(left, right) => left.lastUsed - right.lastUsed,
+		);
 
-	for (const entry of entries) {
-		await deleteHikingMapTileCacheEntry(index, entry);
-		currentBytes -= entry.size;
-		if (currentBytes <= HIKING_MAP_TILE_CACHE_MAX_BYTES) {
-			break;
+		for (const entry of entries) {
+			await deleteEntry(index, entry);
+			currentBytes -= entry.size;
+			if (currentBytes <= config.maxBytes) {
+				break;
+			}
 		}
 	}
+
+	return {
+		getMemory(key: string): T | undefined {
+			return config.memoryCache.get(key);
+		},
+		loadIndex,
+		async get(key: string): Promise<T | null> {
+			const memoryCachedValue = config.memoryCache.get(key);
+			if (memoryCachedValue) {
+				return memoryCachedValue;
+			}
+
+			const index = await loadIndex();
+			const entry = index.entries[key];
+			if (!entry) {
+				return null;
+			}
+
+			if (!(await space.fileExists(entry.path))) {
+				delete index.entries[key];
+				await persistIndex(index);
+				return null;
+			}
+
+			try {
+				const bytes = await space.readFile(entry.path);
+				const decoded = config.decode(bytes);
+				config.memoryCache.set(key, decoded);
+				entry.lastUsed = Date.now();
+				await persistIndex(index);
+				return decoded;
+			} catch (error) {
+				config.onDecodeError?.(key, error);
+				await deleteEntry(index, entry);
+				await persistIndex(index);
+				return null;
+			}
+		},
+		async put(key: string, path: string, value: T): Promise<void> {
+			const index = await loadIndex();
+			const encoded = config.encode(value);
+			config.memoryCache.set(key, value);
+			await space.writeFile(path, encoded);
+			index.entries[key] = {
+				key,
+				path,
+				size: encoded.byteLength,
+				lastUsed: Date.now(),
+			};
+			await enforceLimit(index);
+			await persistIndex(index);
+		},
+		async invalidate(key: string): Promise<void> {
+			config.deleteMemoryEntry(key);
+
+			const index = await loadIndex();
+			const entry = index.entries[key];
+			if (!entry) {
+				return;
+			}
+
+			await deleteEntry(index, entry);
+			await persistIndex(index);
+		},
+		async clear(): Promise<number> {
+			const index = await loadIndex();
+			const entries = Object.values(index.entries);
+			for (const entry of entries) {
+				if (await space.fileExists(entry.path)) {
+					await space.deleteFile(entry.path);
+				}
+			}
+			if (await space.fileExists(config.indexPath)) {
+				await space.deleteFile(config.indexPath);
+			}
+			config.memoryCache.clear();
+			memoryIndexCache = createEmptyIndex(config.version);
+			return entries.length;
+		},
+	};
 }
+
+function decodeRawBytes(bytes: Uint8Array): Uint8Array {
+	return bytes;
+}
+
+function encodeRawBytes(bytes: Uint8Array): Uint8Array {
+	return bytes;
+}
+
+const tileCacheStore = createCacheStore<SampledTile>({
+	version: TERRAIN_CACHE_VERSION,
+	rootPath: TERRAIN_CACHE_ROOT,
+	indexPath: TERRAIN_CACHE_INDEX_PATH,
+	maxBytes: TERRAIN_CACHE_MAX_BYTES,
+	memoryCache: memoryTileCache,
+	encode: encodeTile,
+	decode: decodeTile,
+	deleteMemoryEntry: (key) => memoryTileCache.delete(key),
+	onDecodeError: (key, error) => {
+		if (isUnsupportedCacheVersionError(error)) {
+			console.warn(
+				`Discarding outdated cached terrain tile for ${key}: ${
+					error instanceof Error ? error.message : "Unknown error"
+				}`,
+			);
+		}
+	},
+});
+
+const packCacheStore = createCacheStore<Uint8Array>({
+	version: CIMAL_PACK_CACHE_VERSION,
+	rootPath: CIMAL_PACK_CACHE_ROOT,
+	indexPath: CIMAL_PACK_CACHE_INDEX_PATH,
+	maxBytes: CIMAL_PACK_CACHE_MAX_BYTES,
+	memoryCache: memoryPackCache,
+	encode: encodeRawBytes,
+	decode: decodeRawBytes,
+	deleteMemoryEntry: (key) => memoryPackCache.delete(key),
+});
+
+const hikingMapTileCacheStore = createCacheStore<Uint8Array>({
+	version: HIKING_MAP_TILE_CACHE_VERSION,
+	rootPath: HIKING_MAP_TILE_CACHE_ROOT,
+	indexPath: HIKING_MAP_TILE_CACHE_INDEX_PATH,
+	maxBytes: HIKING_MAP_TILE_CACHE_MAX_BYTES,
+	memoryCache: memoryHikingMapTileCache,
+	encode: encodeRawBytes,
+	decode: decodeRawBytes,
+	deleteMemoryEntry: (key) => memoryHikingMapTileCache.delete(key),
+});
 
 export function buildSampledTileCacheEntry(
 	key: string,
@@ -396,43 +525,13 @@ export function buildHikingMapTileCacheEntry(
 }
 
 export function getMemoryCachedTile(key: string): SampledTile | undefined {
-	return memoryTileCache.get(key);
+	return tileCacheStore.getMemory(key);
 }
 
 export async function getPersistentCachedTile(
 	key: string,
 ): Promise<SampledTile | null> {
-	const index = await loadIndex();
-	const entry = index.entries[key];
-	if (!entry) {
-		return null;
-	}
-
-	if (!(await space.fileExists(entry.path))) {
-		delete index.entries[key];
-		await persistIndex(index);
-		return null;
-	}
-
-	try {
-		const data = await space.readFile(entry.path);
-		const tile = decodeTile(data);
-		memoryTileCache.set(key, tile);
-		entry.lastUsed = Date.now();
-		await persistIndex(index);
-		return tile;
-	} catch (error) {
-		if (isUnsupportedCacheVersionError(error)) {
-			console.warn(
-				`Discarding outdated cached terrain tile for ${key}: ${
-					error instanceof Error ? error.message : "Unknown error"
-				}`,
-			);
-		}
-		await deleteCacheEntry(index, entry);
-		await persistIndex(index);
-		return null;
-	}
+	return tileCacheStore.get(key);
 }
 
 export async function putCachedTile(
@@ -440,82 +539,17 @@ export async function putCachedTile(
 	path: string,
 	tile: SampledTile,
 ): Promise<void> {
-	const index = await loadIndex();
-	const encoded = encodeTile(tile);
-	memoryTileCache.set(key, tile);
-	await space.writeFile(path, encoded);
-	index.entries[key] = {
-		key,
-		path,
-		size: encoded.byteLength,
-		lastUsed: Date.now(),
-	};
-	await enforceCacheLimit(index);
-	await persistIndex(index);
+	await tileCacheStore.put(key, path, tile);
 }
 
 export async function getCachedPack(key: string): Promise<Uint8Array | null> {
-	const memoryCachedPack = memoryPackCache.get(key);
-	if (memoryCachedPack) {
-		return memoryCachedPack;
-	}
-
-	const index = await loadPackIndex();
-	const entry = index.entries[key];
-	if (!entry) {
-		return null;
-	}
-
-	if (!(await space.fileExists(entry.path))) {
-		delete index.entries[key];
-		await persistPackIndex(index);
-		return null;
-	}
-
-	try {
-		const packed = await space.readFile(entry.path);
-		memoryPackCache.set(key, packed);
-		entry.lastUsed = Date.now();
-		await persistPackIndex(index);
-		return packed;
-	} catch {
-		await deletePackCacheEntry(index, entry);
-		await persistPackIndex(index);
-		return null;
-	}
+	return packCacheStore.get(key);
 }
 
 export async function getCachedHikingMapTile(
 	key: string,
 ): Promise<Uint8Array | null> {
-	const memoryCachedTile = memoryHikingMapTileCache.get(key);
-	if (memoryCachedTile) {
-		return memoryCachedTile;
-	}
-
-	const index = await loadHikingMapTileIndex();
-	const entry = index.entries[key];
-	if (!entry) {
-		return null;
-	}
-
-	if (!(await space.fileExists(entry.path))) {
-		delete index.entries[key];
-		await persistHikingMapTileIndex(index);
-		return null;
-	}
-
-	try {
-		const bytes = await space.readFile(entry.path);
-		memoryHikingMapTileCache.set(key, bytes);
-		entry.lastUsed = Date.now();
-		await persistHikingMapTileIndex(index);
-		return bytes;
-	} catch {
-		await deleteHikingMapTileCacheEntry(index, entry);
-		await persistHikingMapTileIndex(index);
-		return null;
-	}
+	return hikingMapTileCacheStore.get(key);
 }
 
 export async function putCachedHikingMapTile(
@@ -523,30 +557,11 @@ export async function putCachedHikingMapTile(
 	path: string,
 	bytes: Uint8Array,
 ): Promise<void> {
-	const index = await loadHikingMapTileIndex();
-	memoryHikingMapTileCache.set(key, bytes);
-	await space.writeFile(path, bytes);
-	index.entries[key] = {
-		key,
-		path,
-		size: bytes.byteLength,
-		lastUsed: Date.now(),
-	};
-	await enforceHikingMapTileCacheLimit(index);
-	await persistHikingMapTileIndex(index);
+	await hikingMapTileCacheStore.put(key, path, bytes);
 }
 
 export async function invalidateCachedPack(key: string): Promise<void> {
-	memoryPackCache.delete(key);
-
-	const index = await loadPackIndex();
-	const entry = index.entries[key];
-	if (!entry) {
-		return;
-	}
-
-	await deletePackCacheEntry(index, entry);
-	await persistPackIndex(index);
+	await packCacheStore.invalidate(key);
 }
 
 export async function putCachedPack(
@@ -554,67 +569,24 @@ export async function putCachedPack(
 	path: string,
 	packed: Uint8Array,
 ): Promise<void> {
-	const index = await loadPackIndex();
-	memoryPackCache.set(key, packed);
-	await space.writeFile(path, packed);
-	index.entries[key] = {
-		key,
-		path,
-		size: packed.byteLength,
-		lastUsed: Date.now(),
-	};
-	await enforcePackCacheLimit(index);
-	await persistPackIndex(index);
+	await packCacheStore.put(key, path, packed);
 }
 
 export async function clearTerrainCache(): Promise<number> {
-	const index = await loadIndex();
-	const entries = Object.values(index.entries);
-	for (const entry of entries) {
-		if (await space.fileExists(entry.path)) {
-			await space.deleteFile(entry.path);
-		}
+	const stores = [tileCacheStore, packCacheStore, hikingMapTileCacheStore];
+	let clearedEntries = 0;
+	for (const store of stores) {
+		clearedEntries += await store.clear();
 	}
-	if (await space.fileExists(TERRAIN_CACHE_INDEX_PATH)) {
-		await space.deleteFile(TERRAIN_CACHE_INDEX_PATH);
-	}
-	const packIndex = await loadPackIndex();
-	const packEntries = Object.values(packIndex.entries);
-	for (const entry of packEntries) {
-		if (await space.fileExists(entry.path)) {
-			await space.deleteFile(entry.path);
-		}
-	}
-	if (await space.fileExists(CIMAL_PACK_CACHE_INDEX_PATH)) {
-		await space.deleteFile(CIMAL_PACK_CACHE_INDEX_PATH);
-	}
-	const hikingMapTileIndex = await loadHikingMapTileIndex();
-	const hikingMapTileEntries = Object.values(hikingMapTileIndex.entries);
-	for (const entry of hikingMapTileEntries) {
-		if (await space.fileExists(entry.path)) {
-			await space.deleteFile(entry.path);
-		}
-	}
-	if (await space.fileExists(HIKING_MAP_TILE_CACHE_INDEX_PATH)) {
-		await space.deleteFile(HIKING_MAP_TILE_CACHE_INDEX_PATH);
-	}
-	memoryTileCache.clear();
-	memoryHikingMapTileCache.clear();
-	memoryPackCache.clear();
-	memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
-	memoryHikingMapTileIndexCache = createEmptyIndex(
-		HIKING_MAP_TILE_CACHE_VERSION,
-	);
-	memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
-	return entries.length + packEntries.length + hikingMapTileEntries.length;
+	return clearedEntries;
 }
 
 export async function showTerrainCacheStats(): Promise<void> {
-	const index = await loadIndex();
+	const index = await tileCacheStore.loadIndex();
 	const entries = Object.values(index.entries);
-	const packIndex = await loadPackIndex();
+	const packIndex = await packCacheStore.loadIndex();
 	const packEntries = Object.values(packIndex.entries);
-	const hikingMapTileIndex = await loadHikingMapTileIndex();
+	const hikingMapTileIndex = await hikingMapTileCacheStore.loadIndex();
 	const hikingMapTileEntries = Object.values(hikingMapTileIndex.entries);
 	const totalBytes =
 		totalCacheBytes(index) +

@@ -6,6 +6,7 @@ import type {
 	ViewerConfig,
 	ViewerStyle,
 } from "../types.ts";
+import { DEFAULT_VIEWER_CONFIG } from "../viewerConfig.ts";
 
 type ViewerTheme = {
 	cssVars: Record<string, string>;
@@ -60,14 +61,10 @@ const app = requireElement("app", HTMLDivElement);
 const payload = JSON.parse(payloadScript.textContent ?? "null") as
 	| ErrorPayload
 	| TerrainPayload;
-const defaultViewerConfig: ViewerConfig = {
-	style: "classic",
-	hikingMapResolution: "standard",
-};
 const viewerConfig = {
-	...defaultViewerConfig,
+	...DEFAULT_VIEWER_CONFIG,
 	...(JSON.parse(
-		viewerConfigScript.textContent ?? JSON.stringify(defaultViewerConfig),
+		viewerConfigScript.textContent ?? JSON.stringify(DEFAULT_VIEWER_CONFIG),
 	) as Partial<ViewerConfig>),
 } satisfies ViewerConfig;
 const viewerStyle = viewerConfig.style;
