@@ -1,3 +1,9 @@
+import {
+	buildHikingMapTileCacheEntry,
+	buildHikingMapTileCacheKey,
+	getCachedHikingMapTile,
+	putCachedHikingMapTile,
+} from "./cache.ts";
 import type {
 	BakedHikingMapTexture,
 	GeoBounds,
@@ -51,27 +57,27 @@ export const HIKING_MAP_TEXTURE_PRESETS: Record<
 > = {
 	low: {
 		label: "low",
-		initialZoom: 12,
-		maxTileRequests: 24,
-		maxTextureDimension: 4096,
+		initialZoom: 11,
+		maxTileRequests: 9,
+		maxTextureDimension: 1024,
 	},
 	standard: {
 		label: "standard",
-		initialZoom: 13,
-		maxTileRequests: 48,
-		maxTextureDimension: 6144,
+		initialZoom: 12,
+		maxTileRequests: 16,
+		maxTextureDimension: 2048,
 	},
 	high: {
 		label: "high",
-		initialZoom: 14,
-		maxTileRequests: 96,
-		maxTextureDimension: 8192,
+		initialZoom: 13,
+		maxTileRequests: 36,
+		maxTextureDimension: 4096,
 	},
 	ultra: {
 		label: "ultra",
-		initialZoom: 15,
-		maxTileRequests: 192,
-		maxTextureDimension: 12288,
+		initialZoom: 14,
+		maxTileRequests: 64,
+		maxTextureDimension: 8192,
 	},
 };
 
@@ -256,6 +262,59 @@ async function loadTileImage(url: string): Promise<RasterImage> {
 	throw new Error("Tile image decoding is unavailable in this runtime.");
 }
 
+async function loadTileBytes(url: string): Promise<Uint8Array> {
+	const response = await fetch(url);
+	if (!response.ok) {
+		throw new Error(
+			`Failed to load raster tile ${url}: HTTP ${response.status}`,
+		);
+	}
+	return new Uint8Array(await response.arrayBuffer());
+}
+
+async function decodeTileBytes(bytes: Uint8Array): Promise<RasterImage> {
+	const blob = new Blob([bytes], { type: "image/png" });
+	if (typeof createImageBitmap === "function") {
+		return createImageBitmap(blob);
+	}
+
+	if (
+		hasDomImageSupport() &&
+		typeof URL !== "undefined" &&
+		typeof URL.createObjectURL === "function"
+	) {
+		const objectUrl = URL.createObjectURL(blob);
+		try {
+			return await loadDomImage(objectUrl);
+		} finally {
+			URL.revokeObjectURL(objectUrl);
+		}
+	}
+
+	throw new Error("Tile image decoding is unavailable in this runtime.");
+}
+
+async function loadCachedTileImage(
+	zoom: number,
+	tileX: number,
+	tileY: number,
+	url: string,
+): Promise<RasterImage> {
+	const cacheKey = buildHikingMapTileCacheKey(zoom, tileX, tileY);
+	const cachedBytes = await getCachedHikingMapTile(cacheKey);
+	if (cachedBytes) {
+		return decodeTileBytes(cachedBytes);
+	}
+
+	const bytes = await loadTileBytes(url);
+	const cacheEntry = buildHikingMapTileCacheEntry(
+		cacheKey,
+		`z${zoom}-x${tileX}-y${tileY}`,
+	);
+	await putCachedHikingMapTile(cacheEntry.key, cacheEntry.path, bytes);
+	return decodeTileBytes(bytes);
+}
+
 async function canvasToDataUrl(
 	canvas: RasterCanvas,
 	mimeType: string,
@@ -380,11 +439,13 @@ export async function bakeHikingMapTexture(
 				.replace("{x}", String(wrappedX))
 				.replace("{y}", String(clampedY));
 			tileRequests.push(
-				loadTileImage(url).then((image) => ({
-					image,
-					tileX,
-					tileY,
-				})),
+				loadCachedTileImage(coverage.zoom, wrappedX, clampedY, url).then(
+					(image) => ({
+						image,
+						tileX,
+						tileY,
+					}),
+				),
 			);
 		}
 	}
