@@ -8,6 +8,11 @@
 	--accent-soft: #ffd08f;
 	--text: #eaf2f5;
 	--muted: #9db0bb;
+	--warning-bg: rgba(54, 34, 16, 0.82);
+	--warning-border: rgba(255, 208, 143, 0.26);
+	--warning-text: #ffd08f;
+	--shadow-color: rgba(0, 0, 0, 0.34);
+	--atmosphere-glow: rgba(255, 123, 50, 0.16);
 }
 
 * {
@@ -19,7 +24,7 @@ body {
 	font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
 	color: var(--text);
 	background:
-		radial-gradient(circle at top, rgba(255, 123, 50, 0.16), transparent 30%),
+		radial-gradient(circle at top, var(--atmosphere-glow), transparent 32%),
 		linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 70%);
 	overflow: hidden;
 }
@@ -45,7 +50,7 @@ body {
 	backdrop-filter: blur(16px);
 	background: var(--card);
 	border: 1px solid var(--card-border);
-	box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+	box-shadow: 0 18px 50px var(--shadow-color);
 }
 
 .hud {
@@ -75,9 +80,9 @@ body {
 	max-width: min(360px, calc(100vw - 32px));
 	padding: 12px 14px;
 	border-radius: 16px;
-	border-color: rgba(255, 208, 143, 0.26);
-	background: rgba(54, 34, 16, 0.82);
-	color: var(--accent-soft);
+	border-color: var(--warning-border);
+	background: var(--warning-bg);
+	color: var(--warning-text);
 	font-size: 0.82rem;
 	line-height: 1.45;
 }

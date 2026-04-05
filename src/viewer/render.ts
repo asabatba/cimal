@@ -7,6 +7,11 @@ import { buildTerrainSideGeometry, buildTrackRibbon } from "./geometry.ts";
 import type { ViewerTheme } from "./themes.ts";
 import { detectWaterMask } from "./water.ts";
 
+type ColorStop = {
+	t: number;
+	color: InstanceType<typeof import("three")["Color"]>;
+};
+
 export async function renderTerrainViewer(
 	app: HTMLDivElement,
 	payload: TerrainPayload,
@@ -109,19 +114,37 @@ export async function renderTerrainViewer(
 	sun.position.set(-spanX * 0.5, Math.max(spanX, spanZ), spanZ * 0.4);
 	scene.add(sun);
 
-	const terrainStops = activeTheme.terrainStops.map((stop) => ({
+	const terrainStops = activeTheme.terrain.elevationStops.map((stop) => ({
 		t: stop.t,
 		color: new THREE.Color(stop.color),
 	}));
+	const waterStops = activeTheme.water.surfaceStops.map((stop) => ({
+		t: stop.t,
+		color: new THREE.Color(stop.color),
+	}));
+	const trackStops = activeTheme.track.altitudeTintStops?.map((stop) => ({
+		t: stop.t,
+		color: new THREE.Color(stop.color),
+	}));
+	const slopeLow = new THREE.Color(activeTheme.terrain.slopeTint.low);
+	const slopeHigh = new THREE.Color(activeTheme.terrain.slopeTint.high);
+	const aspectCool = new THREE.Color(activeTheme.terrain.aspectTint.cool);
+	const aspectWarm = new THREE.Color(activeTheme.terrain.aspectTint.warm);
+	const baseTrackColor = new THREE.Color(activeTheme.track.baseColor);
+	const shoreTint = activeTheme.water.shoreTint
+		? new THREE.Color(activeTheme.water.shoreTint)
+		: null;
+	const warmAspectDirection = new THREE.Vector2(-0.78, 0.62).normalize();
+	const coolAspectDirection = warmAspectDirection.clone().negate();
 
-	function sampleTerrainColor(normalized: number) {
-		if (normalized <= terrainStops[0].t) {
-			return terrainStops[0].color.clone();
+	function sampleGradient(stops: ColorStop[], normalized: number) {
+		if (normalized <= stops[0].t) {
+			return stops[0].color.clone();
 		}
 
-		for (let index = 1; index < terrainStops.length; index += 1) {
-			const previous = terrainStops[index - 1];
-			const current = terrainStops[index];
+		for (let index = 1; index < stops.length; index += 1) {
+			const previous = stops[index - 1];
+			const current = stops[index];
 			if (normalized <= current.t) {
 				const localT =
 					(normalized - previous.t) / Math.max(0.0001, current.t - previous.t);
@@ -131,23 +154,109 @@ export async function renderTerrainViewer(
 			}
 		}
 
-		return terrainStops[terrainStops.length - 1].color.clone();
+		return stops[stops.length - 1].color.clone();
 	}
 
-	const waterLowColor = new THREE.Color(activeTheme.waterColorLow);
-	const waterHighColor = new THREE.Color(activeTheme.waterColorHigh);
-
-	function sampleWaterColor(normalized: number) {
-		const waterT = THREE.MathUtils.smoothstep(normalized, 0, 1);
-		return waterLowColor.clone().lerp(waterHighColor, waterT);
-	}
-
-	function sampleSurfaceColor(normalized: number, isWater: boolean) {
-		if (isWater && activeTheme.useWaterTint) {
-			return sampleWaterColor(normalized);
+	function computeShoreStrength(
+		column: number,
+		row: number,
+		width: number,
+		height: number,
+		waterMask: Uint8Array,
+		shoreWidth: number,
+	): number {
+		if (waterMask[row * width + column] !== 1 || shoreWidth <= 0) {
+			return 0;
 		}
 
-		return sampleTerrainColor(normalized ** 0.92);
+		let closest = Number.POSITIVE_INFINITY;
+		for (let rowOffset = -shoreWidth; rowOffset <= shoreWidth; rowOffset += 1) {
+			for (
+				let columnOffset = -shoreWidth;
+				columnOffset <= shoreWidth;
+				columnOffset += 1
+			) {
+				const nextRow = row + rowOffset;
+				const nextColumn = column + columnOffset;
+				if (
+					nextRow < 0 ||
+					nextColumn < 0 ||
+					nextRow >= height ||
+					nextColumn >= width
+				) {
+					continue;
+				}
+				if (waterMask[nextRow * width + nextColumn] === 0) {
+					closest = Math.min(
+						closest,
+						Math.max(Math.abs(rowOffset), Math.abs(columnOffset)),
+					);
+				}
+			}
+		}
+
+		if (!Number.isFinite(closest)) {
+			return 0;
+		}
+
+		return THREE.MathUtils.clamp(
+			1 - (closest - 1) / Math.max(shoreWidth, 1),
+			0,
+			1,
+		);
+	}
+
+	function sampleTerrainAppearance(
+		normalized: number,
+		normalY: number,
+		normalX: number,
+		normalZ: number,
+	) {
+		const baseColor = sampleGradient(terrainStops, normalized ** 0.92);
+		const steepness = THREE.MathUtils.clamp(1 - normalY, 0, 1);
+		const slopeMix =
+			steepness ** activeTheme.terrain.slopeTint.curve *
+			activeTheme.terrain.slopeTint.strength;
+		const slopeColor = slopeLow.clone().lerp(slopeHigh, steepness);
+		baseColor.lerp(slopeColor, THREE.MathUtils.clamp(slopeMix, 0, 0.8));
+
+		const horizontalNormal = new THREE.Vector2(normalX, normalZ);
+		let reliefOrientation = normalized;
+		if (horizontalNormal.lengthSq() > 1e-6) {
+			horizontalNormal.normalize();
+			const warmMix =
+				Math.max(0, horizontalNormal.dot(warmAspectDirection)) *
+				activeTheme.terrain.aspectTint.strength *
+				(0.25 + steepness * 0.75);
+			const coolMix =
+				Math.max(0, horizontalNormal.dot(coolAspectDirection)) *
+				activeTheme.terrain.aspectTint.strength *
+				(0.25 + steepness * 0.75);
+			baseColor.lerp(aspectWarm, warmMix);
+			baseColor.lerp(aspectCool, coolMix);
+			reliefOrientation =
+				normalized * 0.68 +
+				THREE.MathUtils.clamp(1 - steepness * 0.85, 0, 1) * 0.32;
+		}
+
+		const reliefValue = THREE.MathUtils.lerp(
+			activeTheme.terrain.reliefShading.shadow,
+			activeTheme.terrain.reliefShading.highlight,
+			reliefOrientation ** activeTheme.terrain.reliefShading.curve,
+		);
+		const reliefStrength = activeTheme.terrain.reliefShading.strength;
+		baseColor.multiplyScalar(
+			THREE.MathUtils.lerp(
+				1,
+				reliefValue,
+				THREE.MathUtils.clamp(reliefStrength, 0, 1),
+			),
+		);
+
+		return {
+			color: baseColor,
+			reliefShade: THREE.MathUtils.clamp(reliefValue, 0.64, 1.18),
+		};
 	}
 
 	styleAttribution.textContent = activeTheme.styleDescription;
@@ -177,6 +286,7 @@ export async function renderTerrainViewer(
 		grid.elevations,
 		activeTheme.useWaterTint,
 	);
+	const shoreStrengths = new Float32Array(vertexCount);
 
 	let pointer = 0;
 	let uvPointer = 0;
@@ -187,28 +297,21 @@ export async function renderTerrainViewer(
 			const columnRatio = grid.width === 1 ? 0.5 : column / (grid.width - 1);
 			const x = (columnRatio - 0.5) * spanX;
 			const elevation = grid.elevations[row * grid.width + column];
-			const normalized = (elevation - grid.minElevation) / elevationRange;
 			const y = (elevation - grid.minElevation) * exaggeration;
 
 			positions[pointer] = x;
 			positions[pointer + 1] = y;
 			positions[pointer + 2] = z;
-
-			const fallbackColor = sampleSurfaceColor(
-				normalized,
-				waterMask[row * grid.width + column] === 1,
-			);
-			terrainColors[pointer] = fallbackColor.r;
-			terrainColors[pointer + 1] = fallbackColor.g;
-			terrainColors[pointer + 2] = fallbackColor.b;
-
-			const reliefShade = THREE.MathUtils.lerp(0.82, 0.98, normalized ** 0.85);
-			hikingTextureBlendColors[pointer] = reliefShade;
-			hikingTextureBlendColors[pointer + 1] = reliefShade;
-			hikingTextureBlendColors[pointer + 2] = reliefShade;
-
 			uvs[uvPointer] = columnRatio;
 			uvs[uvPointer + 1] = 1 - rowRatio;
+			shoreStrengths[row * grid.width + column] = computeShoreStrength(
+				column,
+				row,
+				grid.width,
+				grid.height,
+				waterMask,
+				activeTheme.water.shoreWidth,
+			);
 
 			pointer += 3;
 			uvPointer += 2;
@@ -228,14 +331,35 @@ export async function renderTerrainViewer(
 
 	geometry.setIndex(indices);
 	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	geometry.setAttribute("color", new THREE.BufferAttribute(terrainColors, 3));
 	geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
 	geometry.computeVertexNormals();
 
+	const normals = geometry.getAttribute("normal");
+	for (let index = 0; index < vertexCount; index += 1) {
+		const colorPointer = index * 3;
+		const elevation = grid.elevations[index];
+		const normalized = (elevation - grid.minElevation) / elevationRange;
+		const appearance = sampleTerrainAppearance(
+			normalized,
+			normals.getY(index),
+			normals.getX(index),
+			normals.getZ(index),
+		);
+
+		terrainColors[colorPointer] = appearance.color.r;
+		terrainColors[colorPointer + 1] = appearance.color.g;
+		terrainColors[colorPointer + 2] = appearance.color.b;
+		hikingTextureBlendColors[colorPointer] = appearance.reliefShade;
+		hikingTextureBlendColors[colorPointer + 1] = appearance.reliefShade;
+		hikingTextureBlendColors[colorPointer + 2] = appearance.reliefShade;
+	}
+
+	geometry.setAttribute("color", new THREE.BufferAttribute(terrainColors, 3));
+
 	const terrainMaterial = new THREE.MeshStandardMaterial({
 		vertexColors: true,
-		roughness: activeTheme.terrainRoughness,
-		metalness: activeTheme.terrainMetalness,
+		roughness: activeTheme.terrain.roughness,
+		metalness: activeTheme.terrain.metalness,
 	});
 	const terrainDepth = Math.max(
 		90,
@@ -251,7 +375,7 @@ export async function renderTerrainViewer(
 		terrainBottomY,
 	);
 	const sideMaterial = new THREE.MeshStandardMaterial({
-		color: activeTheme.sideColor,
+		color: activeTheme.terrain.sideColor,
 		roughness: 0.98,
 		metalness: 0.02,
 		side: THREE.DoubleSide,
@@ -264,7 +388,7 @@ export async function renderTerrainViewer(
 	const terrainBottom = new THREE.Mesh(
 		bottomGeometry,
 		new THREE.MeshStandardMaterial({
-			color: activeTheme.bottomColor,
+			color: activeTheme.terrain.bottomColor,
 			roughness: 1,
 			metalness: 0,
 			side: THREE.DoubleSide,
@@ -275,6 +399,86 @@ export async function renderTerrainViewer(
 
 	const terrain = new THREE.Mesh(geometry, terrainMaterial);
 	scene.add(terrain);
+
+	let waterOverlay: InstanceType<(typeof THREE)["Mesh"]> | null = null;
+	if (activeTheme.useWaterTint) {
+		const waterPositions: number[] = [];
+		const waterColors: number[] = [];
+		const waterIndices: number[] = [];
+		const overlayHeight = Math.max(1.25, sceneSpan * 0.00008);
+
+		for (let row = 0; row < grid.height - 1; row += 1) {
+			for (let column = 0; column < grid.width - 1; column += 1) {
+				const topLeft = row * grid.width + column;
+				const topRight = topLeft + 1;
+				const bottomLeft = topLeft + grid.width;
+				const bottomRight = bottomLeft + 1;
+				const triangles = [
+					[topLeft, bottomLeft, topRight],
+					[topRight, bottomLeft, bottomRight],
+				];
+
+				for (const triangle of triangles) {
+					if (!triangle.every((vertex) => waterMask[vertex] === 1)) {
+						continue;
+					}
+
+					const baseIndex = waterPositions.length / 3;
+					for (const vertex of triangle) {
+						const normalized =
+							(grid.elevations[vertex] - grid.minElevation) / elevationRange;
+						const waterColor = sampleGradient(waterStops, normalized);
+						if (shoreTint) {
+							waterColor.lerp(shoreTint, shoreStrengths[vertex] * 0.7);
+						}
+						waterPositions.push(
+							positions[vertex * 3],
+							positions[vertex * 3 + 1] + overlayHeight,
+							positions[vertex * 3 + 2],
+						);
+						waterColors.push(waterColor.r, waterColor.g, waterColor.b);
+					}
+					waterIndices.push(baseIndex, baseIndex + 1, baseIndex + 2);
+				}
+			}
+		}
+
+		if (waterPositions.length > 0) {
+			const waterGeometry = new THREE.BufferGeometry();
+			waterGeometry.setIndex(waterIndices);
+			waterGeometry.setAttribute(
+				"position",
+				new THREE.Float32BufferAttribute(waterPositions, 3),
+			);
+			waterGeometry.setAttribute(
+				"color",
+				new THREE.Float32BufferAttribute(waterColors, 3),
+			);
+			waterGeometry.computeVertexNormals();
+			waterOverlay = new THREE.Mesh(
+				waterGeometry,
+				new THREE.MeshStandardMaterial({
+					vertexColors: true,
+					transparent: true,
+					opacity: activeTheme.water.opacity,
+					roughness: THREE.MathUtils.clamp(
+						1 - activeTheme.water.specularStrength * 0.82,
+						0.08,
+						0.95,
+					),
+					metalness: THREE.MathUtils.clamp(
+						activeTheme.water.specularStrength * 0.38,
+						0,
+						0.45,
+					),
+					polygonOffset: true,
+					polygonOffsetFactor: -1,
+					polygonOffsetUnits: -1,
+				}),
+			);
+			scene.add(waterOverlay);
+		}
+	}
 
 	if (activeTheme.useHikingMap) {
 		if (payload.bakedHikingMap) {
@@ -309,14 +513,36 @@ export async function renderTerrainViewer(
 		exaggeration,
 	);
 	if (trackGeometry) {
+		const trackColorBuffer = new Float32Array(track.length * 2 * 3);
+		for (let index = 0; index < track.length; index += 1) {
+			const normalized = THREE.MathUtils.clamp(
+				(track[index].y - grid.minElevation) / elevationRange,
+				0,
+				1,
+			);
+			const trackColor = trackStops
+				? sampleGradient(trackStops, normalized)
+				: baseTrackColor.clone();
+			const pointerBase = index * 6;
+			trackColorBuffer[pointerBase] = trackColor.r;
+			trackColorBuffer[pointerBase + 1] = trackColor.g;
+			trackColorBuffer[pointerBase + 2] = trackColor.b;
+			trackColorBuffer[pointerBase + 3] = trackColor.r;
+			trackColorBuffer[pointerBase + 4] = trackColor.g;
+			trackColorBuffer[pointerBase + 5] = trackColor.b;
+		}
+		trackGeometry.setAttribute(
+			"color",
+			new THREE.BufferAttribute(trackColorBuffer, 3),
+		);
 		const trackRibbon = new THREE.Mesh(
 			trackGeometry,
 			new THREE.MeshStandardMaterial({
-				color: activeTheme.trackColor,
-				roughness: 0.42,
-				metalness: 0.05,
-				emissive: activeTheme.trackEmissive,
-				emissiveIntensity: activeTheme.trackEmissiveIntensity,
+				vertexColors: true,
+				roughness: activeTheme.track.roughness,
+				metalness: activeTheme.track.metalness,
+				emissive: activeTheme.track.emissive,
+				emissiveIntensity: activeTheme.track.emissiveIntensity,
 				side: THREE.DoubleSide,
 			}),
 		);
@@ -329,10 +555,14 @@ export async function renderTerrainViewer(
 		18,
 	);
 	const startMaterial = new THREE.MeshStandardMaterial({
-		color: activeTheme.startColor,
+		color: activeTheme.markers.startColor,
+		emissive: activeTheme.markers.ringEmissive,
+		emissiveIntensity: 0.1,
 	});
 	const finishMaterial = new THREE.MeshStandardMaterial({
-		color: activeTheme.finishColor,
+		color: activeTheme.markers.finishColor,
+		emissive: activeTheme.markers.ringEmissive,
+		emissiveIntensity: 0.12,
 	});
 	const start = track[0];
 	const end = track[track.length - 1];
@@ -358,15 +588,17 @@ export async function renderTerrainViewer(
 		Math.max(16, Math.min(spanX, spanZ) * 0.016),
 		48,
 	);
-	const ring = new THREE.Mesh(
-		ringGeometry,
-		new THREE.MeshBasicMaterial({
-			color: activeTheme.ringColor,
-			transparent: true,
-			opacity: activeTheme.ringOpacity,
-			side: THREE.DoubleSide,
-		}),
-	);
+	const ringMaterial = new THREE.MeshStandardMaterial({
+		color: activeTheme.markers.ringColor,
+		emissive: activeTheme.markers.ringEmissive,
+		emissiveIntensity: 0.45,
+		transparent: true,
+		opacity: activeTheme.markers.ringOpacity,
+		side: THREE.DoubleSide,
+		roughness: 0.32,
+		metalness: 0.12,
+	});
+	const ring = new THREE.Mesh(ringGeometry, ringMaterial);
 	ring.rotation.x = -Math.PI / 2;
 	ring.position.y = 2;
 	scene.add(ring);
@@ -386,7 +618,23 @@ export async function renderTerrainViewer(
 		const deltaSeconds = Math.max(0, (frameTime - lastFrameTime) / 1000);
 		lastFrameTime = frameTime;
 		keyboardControls.applyKeyboardMotion(deltaSeconds);
+		const pulse =
+			0.72 +
+			0.28 *
+				(0.5 +
+					0.5 *
+						Math.sin(frameTime * 0.001 * activeTheme.markers.ringPulseSpeed));
 		ring.rotation.z += 0.0025;
+		ringMaterial.opacity = THREE.MathUtils.clamp(
+			activeTheme.markers.ringOpacity * pulse,
+			0.08,
+			0.95,
+		);
+		ringMaterial.emissiveIntensity = 0.28 + pulse * 0.5;
+		if (waterOverlay?.material instanceof THREE.MeshStandardMaterial) {
+			waterOverlay.material.emissiveIntensity =
+				activeTheme.water.specularStrength * 0.08 * pulse;
+		}
 		controls.update();
 		renderer.render(scene, camera);
 	}

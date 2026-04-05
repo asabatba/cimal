@@ -1,5 +1,66 @@
 import type { ViewerStyle } from "../types.ts";
 
+type ColorStop = { t: number; color: number };
+
+type ThemeTerrain = {
+	elevationStops: ColorStop[];
+	slopeTint: {
+		low: number;
+		high: number;
+		strength: number;
+		curve: number;
+	};
+	aspectTint: {
+		cool: number;
+		warm: number;
+		strength: number;
+	};
+	reliefShading: {
+		shadow: number;
+		highlight: number;
+		strength: number;
+		curve: number;
+	};
+	sideColor: number;
+	bottomColor: number;
+	roughness: number;
+	metalness: number;
+};
+
+type ThemeWater = {
+	surfaceStops: ColorStop[];
+	specularStrength: number;
+	opacity: number;
+	shoreTint?: number;
+	shoreWidth: number;
+};
+
+type ThemeTrack = {
+	baseColor: number;
+	emissive: number;
+	emissiveIntensity: number;
+	roughness: number;
+	metalness: number;
+	altitudeTintStops?: ColorStop[];
+};
+
+type ThemeMarkers = {
+	startColor: number;
+	finishColor: number;
+	ringColor: number;
+	ringOpacity: number;
+	ringEmissive: number;
+	ringPulseSpeed: number;
+};
+
+type ThemeHud = {
+	warningBackground: string;
+	warningBorder: string;
+	warningText: string;
+	shadowColor: string;
+	atmosphereGlow: string;
+};
+
 export type ViewerTheme = {
 	cssVars: Record<string, string>;
 	styleDescription: string;
@@ -11,24 +72,122 @@ export type ViewerTheme = {
 	hemisphereIntensity: number;
 	sunColor: number;
 	sunIntensity: number;
-	terrainStops: Array<{ t: number; color: number }>;
-	waterColorLow: number;
-	waterColorHigh: number;
-	sideColor: number;
-	bottomColor: number;
-	terrainRoughness: number;
-	terrainMetalness: number;
-	trackColor: number;
-	trackEmissive: number;
-	trackEmissiveIntensity: number;
-	startColor: number;
-	finishColor: number;
-	ringColor: number;
-	ringOpacity: number;
+	terrain: ThemeTerrain;
+	water: ThemeWater;
+	track: ThemeTrack;
+	markers: ThemeMarkers;
+	hud: ThemeHud;
 };
 
+type ThemeConfig = Omit<ViewerTheme, "cssVars"> & {
+	cssVars: Record<string, string>;
+};
+
+function createTheme(config: ThemeConfig): ViewerTheme {
+	return {
+		...config,
+		cssVars: {
+			...config.cssVars,
+			"--warning-bg": config.hud.warningBackground,
+			"--warning-border": config.hud.warningBorder,
+			"--warning-text": config.hud.warningText,
+			"--shadow-color": config.hud.shadowColor,
+			"--atmosphere-glow": config.hud.atmosphereGlow,
+		},
+	};
+}
+
+function terrainDefaults(overrides: Partial<ThemeTerrain>): ThemeTerrain {
+	const slopeTint = {
+		low: 0x213626,
+		high: 0xf1dcc0,
+		strength: 0.18,
+		curve: 1.25,
+		...overrides.slopeTint,
+	};
+	const aspectTint = {
+		cool: 0x6ca7d8,
+		warm: 0xe8b36a,
+		strength: 0.08,
+		...overrides.aspectTint,
+	};
+	const reliefShading = {
+		shadow: 0.84,
+		highlight: 1.02,
+		strength: 0.45,
+		curve: 0.9,
+		...overrides.reliefShading,
+	};
+
+	return {
+		elevationStops: [
+			{ t: 0.0, color: 0x2f5a38 },
+			{ t: 0.24, color: 0x5f8148 },
+			{ t: 0.52, color: 0xae8d5a },
+			{ t: 0.78, color: 0x757982 },
+			{ t: 1.0, color: 0xe6e2d9 },
+		],
+		sideColor: 0x544d42,
+		bottomColor: 0x403a31,
+		roughness: 0.94,
+		metalness: 0.04,
+		...overrides,
+		slopeTint,
+		aspectTint,
+		reliefShading,
+	};
+}
+
+function waterDefaults(overrides: Partial<ThemeWater>): ThemeWater {
+	return {
+		surfaceStops: [
+			{ t: 0.0, color: 0x1e5a85 },
+			{ t: 1.0, color: 0x5dbaf2 },
+		],
+		specularStrength: 0.42,
+		opacity: 0.62,
+		shoreTint: 0xaee6ff,
+		shoreWidth: 2,
+		...overrides,
+	};
+}
+
+function trackDefaults(overrides: Partial<ThemeTrack>): ThemeTrack {
+	return {
+		baseColor: 0xff7b32,
+		emissive: 0x4a220c,
+		emissiveIntensity: 0.35,
+		roughness: 0.42,
+		metalness: 0.05,
+		...overrides,
+	};
+}
+
+function markerDefaults(overrides: Partial<ThemeMarkers>): ThemeMarkers {
+	return {
+		startColor: 0x9fe870,
+		finishColor: 0xffd35a,
+		ringColor: 0xffffff,
+		ringOpacity: 0.18,
+		ringEmissive: 0x121212,
+		ringPulseSpeed: 1.2,
+		...overrides,
+	};
+}
+
+function hudDefaults(overrides: Partial<ThemeHud>): ThemeHud {
+	return {
+		warningBackground: "rgba(54, 34, 16, 0.82)",
+		warningBorder: "rgba(255, 208, 143, 0.26)",
+		warningText: "#ffd08f",
+		shadowColor: "rgba(0, 0, 0, 0.34)",
+		atmosphereGlow: "rgba(255, 123, 50, 0.16)",
+		...overrides,
+	};
+}
+
 export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
-	classic: {
+	classic: createTheme({
 		cssVars: {
 			"--bg-1": "#0d151b",
 			"--bg-2": "#1d2c38",
@@ -48,28 +207,13 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.2,
 		sunColor: 0xfff1d6,
 		sunIntensity: 1.2,
-		terrainStops: [
-			{ t: 0.0, color: 0x2f5a38 },
-			{ t: 0.24, color: 0x5f8148 },
-			{ t: 0.52, color: 0xae8d5a },
-			{ t: 0.78, color: 0x757982 },
-			{ t: 1.0, color: 0xe6e2d9 },
-		],
-		waterColorLow: 0x1e5a85,
-		waterColorHigh: 0x5dbaf2,
-		sideColor: 0x544d42,
-		bottomColor: 0x403a31,
-		terrainRoughness: 0.94,
-		terrainMetalness: 0.04,
-		trackColor: 0xff7b32,
-		trackEmissive: 0x4a220c,
-		trackEmissiveIntensity: 0.35,
-		startColor: 0x9fe870,
-		finishColor: 0xffd35a,
-		ringColor: 0xffffff,
-		ringOpacity: 0.18,
-	},
-	"hiking-map": {
+		terrain: terrainDefaults({}),
+		water: waterDefaults({}),
+		track: trackDefaults({}),
+		markers: markerDefaults({}),
+		hud: hudDefaults({}),
+	}),
+	"hiking-map": createTheme({
 		cssVars: {
 			"--bg-1": "#0f1718",
 			"--bg-2": "#21353a",
@@ -89,28 +233,31 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.25,
 		sunColor: 0xfff2d2,
 		sunIntensity: 1.25,
-		terrainStops: [
-			{ t: 0.0, color: 0x2f5a38 },
-			{ t: 0.24, color: 0x5f8148 },
-			{ t: 0.52, color: 0xae8d5a },
-			{ t: 0.78, color: 0x757982 },
-			{ t: 1.0, color: 0xe6e2d9 },
-		],
-		waterColorLow: 0x1e5a85,
-		waterColorHigh: 0x5dbaf2,
-		sideColor: 0x544d42,
-		bottomColor: 0x403a31,
-		terrainRoughness: 0.94,
-		terrainMetalness: 0.04,
-		trackColor: 0xff7b32,
-		trackEmissive: 0x4a220c,
-		trackEmissiveIntensity: 0.35,
-		startColor: 0x9fe870,
-		finishColor: 0xffd35a,
-		ringColor: 0xffffff,
-		ringOpacity: 0.18,
-	},
-	vaporwave: {
+		terrain: terrainDefaults({
+			aspectTint: {
+				cool: 0x7ca5be,
+				warm: 0xcfa46f,
+				strength: 0.04,
+			},
+			reliefShading: {
+				shadow: 0.88,
+				highlight: 1.0,
+				strength: 0.32,
+				curve: 0.95,
+			},
+		}),
+		water: waterDefaults({
+			opacity: 0.55,
+			shoreTint: undefined,
+			shoreWidth: 0,
+		}),
+		track: trackDefaults({}),
+		markers: markerDefaults({}),
+		hud: hudDefaults({
+			atmosphereGlow: "rgba(241, 143, 67, 0.14)",
+		}),
+	}),
+	vaporwave: createTheme({
 		cssVars: {
 			"--bg-1": "#120621",
 			"--bg-2": "#471565",
@@ -130,28 +277,73 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.35,
 		sunColor: 0xff8dd8,
 		sunIntensity: 1.45,
-		terrainStops: [
-			{ t: 0.0, color: 0x16113f },
-			{ t: 0.22, color: 0x4a1f7a },
-			{ t: 0.48, color: 0xff4fd8 },
-			{ t: 0.76, color: 0xffa26b },
-			{ t: 1.0, color: 0x7efcff },
-		],
-		waterColorLow: 0x187bff,
-		waterColorHigh: 0x72f7ff,
-		sideColor: 0x31164f,
-		bottomColor: 0x190826,
-		terrainRoughness: 0.86,
-		terrainMetalness: 0.08,
-		trackColor: 0x7efcff,
-		trackEmissive: 0x2f8cff,
-		trackEmissiveIntensity: 0.55,
-		startColor: 0x7efcff,
-		finishColor: 0xffe36e,
-		ringColor: 0xff5fd1,
-		ringOpacity: 0.3,
-	},
-	lava: {
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0x16113f },
+				{ t: 0.22, color: 0x4a1f7a },
+				{ t: 0.48, color: 0xff4fd8 },
+				{ t: 0.76, color: 0xffa26b },
+				{ t: 1.0, color: 0x7efcff },
+			],
+			slopeTint: {
+				low: 0x22114f,
+				high: 0xffd7f9,
+				strength: 0.28,
+				curve: 1.05,
+			},
+			aspectTint: {
+				cool: 0x68f7ff,
+				warm: 0xff74cb,
+				strength: 0.18,
+			},
+			reliefShading: {
+				shadow: 0.8,
+				highlight: 1.08,
+				strength: 0.58,
+				curve: 0.82,
+			},
+			sideColor: 0x31164f,
+			bottomColor: 0x190826,
+			roughness: 0.86,
+			metalness: 0.08,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x187bff },
+				{ t: 1.0, color: 0x72f7ff },
+			],
+			specularStrength: 0.6,
+			opacity: 0.56,
+			shoreTint: 0xff78d7,
+		}),
+		track: trackDefaults({
+			baseColor: 0x7efcff,
+			emissive: 0x2f8cff,
+			emissiveIntensity: 0.55,
+			roughness: 0.3,
+			metalness: 0.1,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0x7efcff },
+				{ t: 0.55, color: 0xff5fd1 },
+				{ t: 1.0, color: 0xffe36e },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0x7efcff,
+			finishColor: 0xffe36e,
+			ringColor: 0xff5fd1,
+			ringOpacity: 0.3,
+			ringEmissive: 0x9e2df2,
+			ringPulseSpeed: 1.8,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(52, 10, 57, 0.84)",
+			warningBorder: "rgba(255, 95, 209, 0.32)",
+			warningText: "#7efcff",
+			atmosphereGlow: "rgba(255, 95, 209, 0.22)",
+		}),
+	}),
+	lava: createTheme({
 		cssVars: {
 			"--bg-1": "#1a0906",
 			"--bg-2": "#4b160b",
@@ -164,35 +356,81 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		},
 		styleDescription: "Style: Volcanic lava glow.",
 		useHikingMap: false,
-		useWaterTint: false,
+		useWaterTint: true,
 		fogColor: 0x230904,
 		hemisphereSky: 0xffb36b,
 		hemisphereGround: 0x2a0b08,
 		hemisphereIntensity: 1.25,
 		sunColor: 0xff8c42,
 		sunIntensity: 1.55,
-		terrainStops: [
-			{ t: 0.0, color: 0x250d0a },
-			{ t: 0.22, color: 0x5a1f0f },
-			{ t: 0.48, color: 0x9e3114 },
-			{ t: 0.76, color: 0xe75b1a },
-			{ t: 1.0, color: 0xffd27a },
-		],
-		waterColorLow: 0x5a190f,
-		waterColorHigh: 0xff6b2c,
-		sideColor: 0x3c1812,
-		bottomColor: 0x25100d,
-		terrainRoughness: 0.92,
-		terrainMetalness: 0.08,
-		trackColor: 0xffd166,
-		trackEmissive: 0xa62b10,
-		trackEmissiveIntensity: 0.75,
-		startColor: 0xff8c42,
-		finishColor: 0xfff3b0,
-		ringColor: 0xff7a2f,
-		ringOpacity: 0.28,
-	},
-	"water-world": {
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0x250d0a },
+				{ t: 0.22, color: 0x5a1f0f },
+				{ t: 0.48, color: 0x9e3114 },
+				{ t: 0.76, color: 0xe75b1a },
+				{ t: 1.0, color: 0xffd27a },
+			],
+			slopeTint: {
+				low: 0x280d08,
+				high: 0xfff0b0,
+				strength: 0.38,
+				curve: 0.95,
+			},
+			aspectTint: {
+				cool: 0x6f2411,
+				warm: 0xff9a37,
+				strength: 0.16,
+			},
+			reliefShading: {
+				shadow: 0.77,
+				highlight: 1.12,
+				strength: 0.72,
+				curve: 0.76,
+			},
+			sideColor: 0x3c1812,
+			bottomColor: 0x25100d,
+			roughness: 0.92,
+			metalness: 0.08,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x5a190f },
+				{ t: 1.0, color: 0xff6b2c },
+			],
+			specularStrength: 0.78,
+			opacity: 0.72,
+			shoreTint: 0xffd166,
+			shoreWidth: 3,
+		}),
+		track: trackDefaults({
+			baseColor: 0xffd166,
+			emissive: 0xa62b10,
+			emissiveIntensity: 0.75,
+			roughness: 0.3,
+			metalness: 0.12,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0xff8c42 },
+				{ t: 0.55, color: 0xffd166 },
+				{ t: 1.0, color: 0xfff3b0 },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0xff8c42,
+			finishColor: 0xfff3b0,
+			ringColor: 0xff7a2f,
+			ringOpacity: 0.28,
+			ringEmissive: 0xff5a1f,
+			ringPulseSpeed: 2.1,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(69, 20, 10, 0.86)",
+			warningBorder: "rgba(255, 169, 82, 0.34)",
+			warningText: "#ffd166",
+			atmosphereGlow: "rgba(255, 90, 31, 0.26)",
+		}),
+	}),
+	"water-world": createTheme({
 		cssVars: {
 			"--bg-1": "#071722",
 			"--bg-2": "#0f4361",
@@ -212,28 +450,74 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.35,
 		sunColor: 0xe6fff8,
 		sunIntensity: 1.3,
-		terrainStops: [
-			{ t: 0.0, color: 0x0e3a4b },
-			{ t: 0.24, color: 0x16627c },
-			{ t: 0.52, color: 0x1d89a0 },
-			{ t: 0.78, color: 0x6fc7d4 },
-			{ t: 1.0, color: 0xe0fff7 },
-		],
-		waterColorLow: 0x0f5b9a,
-		waterColorHigh: 0x67e2ff,
-		sideColor: 0x114054,
-		bottomColor: 0x0a2834,
-		terrainRoughness: 0.9,
-		terrainMetalness: 0.06,
-		trackColor: 0xb8fff5,
-		trackEmissive: 0x1f7ba5,
-		trackEmissiveIntensity: 0.45,
-		startColor: 0x7efcff,
-		finishColor: 0xffffff,
-		ringColor: 0x67e2ff,
-		ringOpacity: 0.26,
-	},
-	dracula: {
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0x0e3a4b },
+				{ t: 0.24, color: 0x16627c },
+				{ t: 0.52, color: 0x1d89a0 },
+				{ t: 0.78, color: 0x6fc7d4 },
+				{ t: 1.0, color: 0xe0fff7 },
+			],
+			slopeTint: {
+				low: 0x103b4a,
+				high: 0xe2fff9,
+				strength: 0.24,
+				curve: 1.05,
+			},
+			aspectTint: {
+				cool: 0x67e2ff,
+				warm: 0x5ed8c4,
+				strength: 0.14,
+			},
+			reliefShading: {
+				shadow: 0.82,
+				highlight: 1.05,
+				strength: 0.55,
+				curve: 0.86,
+			},
+			sideColor: 0x114054,
+			bottomColor: 0x0a2834,
+			roughness: 0.9,
+			metalness: 0.06,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x0f5b9a },
+				{ t: 0.45, color: 0x2db2dd },
+				{ t: 1.0, color: 0x67e2ff },
+			],
+			specularStrength: 0.82,
+			opacity: 0.74,
+			shoreTint: 0xb8fff5,
+			shoreWidth: 3,
+		}),
+		track: trackDefaults({
+			baseColor: 0xb8fff5,
+			emissive: 0x1f7ba5,
+			emissiveIntensity: 0.45,
+			roughness: 0.36,
+			metalness: 0.08,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0x7efcff },
+				{ t: 1.0, color: 0xffffff },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0x7efcff,
+			finishColor: 0xffffff,
+			ringColor: 0x67e2ff,
+			ringOpacity: 0.26,
+			ringEmissive: 0x2db2dd,
+			ringPulseSpeed: 1.5,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(10, 42, 56, 0.84)",
+			warningBorder: "rgba(103, 226, 255, 0.34)",
+			warningText: "#b8fff5",
+			atmosphereGlow: "rgba(63, 195, 255, 0.2)",
+		}),
+	}),
+	dracula: createTheme({
 		cssVars: {
 			"--bg-1": "#1b1830",
 			"--bg-2": "#33264d",
@@ -253,28 +537,73 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.3,
 		sunColor: 0xffb86c,
 		sunIntensity: 1.35,
-		terrainStops: [
-			{ t: 0.0, color: 0x1d1630 },
-			{ t: 0.22, color: 0x49346e },
-			{ t: 0.48, color: 0x7d5bbe },
-			{ t: 0.76, color: 0xff79c6 },
-			{ t: 1.0, color: 0xf8f8f2 },
-		],
-		waterColorLow: 0x245d9c,
-		waterColorHigh: 0x7bdff6,
-		sideColor: 0x302040,
-		bottomColor: 0x1f162c,
-		terrainRoughness: 0.9,
-		terrainMetalness: 0.07,
-		trackColor: 0xf1fa8c,
-		trackEmissive: 0x6e4ca5,
-		trackEmissiveIntensity: 0.42,
-		startColor: 0x50fa7b,
-		finishColor: 0xffb86c,
-		ringColor: 0xff79c6,
-		ringOpacity: 0.26,
-	},
-	pastel: {
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0x1d1630 },
+				{ t: 0.22, color: 0x49346e },
+				{ t: 0.48, color: 0x7d5bbe },
+				{ t: 0.76, color: 0xff79c6 },
+				{ t: 1.0, color: 0xf8f8f2 },
+			],
+			slopeTint: {
+				low: 0x191327,
+				high: 0xffd4a9,
+				strength: 0.26,
+				curve: 1.18,
+			},
+			aspectTint: {
+				cool: 0x8be9fd,
+				warm: 0xffb86c,
+				strength: 0.16,
+			},
+			reliefShading: {
+				shadow: 0.81,
+				highlight: 1.08,
+				strength: 0.52,
+				curve: 0.88,
+			},
+			sideColor: 0x302040,
+			bottomColor: 0x1f162c,
+			roughness: 0.9,
+			metalness: 0.07,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x245d9c },
+				{ t: 1.0, color: 0x7bdff6 },
+			],
+			specularStrength: 0.58,
+			opacity: 0.6,
+			shoreTint: 0xff79c6,
+		}),
+		track: trackDefaults({
+			baseColor: 0xf1fa8c,
+			emissive: 0x6e4ca5,
+			emissiveIntensity: 0.42,
+			roughness: 0.38,
+			metalness: 0.08,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0x8be9fd },
+				{ t: 0.6, color: 0xf1fa8c },
+				{ t: 1.0, color: 0xffb86c },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0x50fa7b,
+			finishColor: 0xffb86c,
+			ringColor: 0xff79c6,
+			ringOpacity: 0.26,
+			ringEmissive: 0xbd93f9,
+			ringPulseSpeed: 1.7,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(40, 23, 61, 0.84)",
+			warningBorder: "rgba(255, 184, 108, 0.28)",
+			warningText: "#f1fa8c",
+			atmosphereGlow: "rgba(255, 121, 198, 0.2)",
+		}),
+	}),
+	pastel: createTheme({
 		cssVars: {
 			"--bg-1": "#f7dfe8",
 			"--bg-2": "#dff5ff",
@@ -294,28 +623,74 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.2,
 		sunColor: 0xfff1b8,
 		sunIntensity: 1.2,
-		terrainStops: [
-			{ t: 0.0, color: 0xb8e0d2 },
-			{ t: 0.24, color: 0xf7cad0 },
-			{ t: 0.52, color: 0xcdb4db },
-			{ t: 0.78, color: 0xa2d2ff },
-			{ t: 1.0, color: 0xfffffc },
-		],
-		waterColorLow: 0x7bc8f6,
-		waterColorHigh: 0xc0fdff,
-		sideColor: 0xcaa5b8,
-		bottomColor: 0xb796aa,
-		terrainRoughness: 0.96,
-		terrainMetalness: 0.02,
-		trackColor: 0xff8fab,
-		trackEmissive: 0xffc2d1,
-		trackEmissiveIntensity: 0.2,
-		startColor: 0x7bd389,
-		finishColor: 0xffd166,
-		ringColor: 0xffffff,
-		ringOpacity: 0.24,
-	},
-	rainbow: {
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0xb8e0d2 },
+				{ t: 0.24, color: 0xf7cad0 },
+				{ t: 0.52, color: 0xcdb4db },
+				{ t: 0.78, color: 0xa2d2ff },
+				{ t: 1.0, color: 0xfffffc },
+			],
+			slopeTint: {
+				low: 0xd4e8df,
+				high: 0xfff7ef,
+				strength: 0.1,
+				curve: 1.45,
+			},
+			aspectTint: {
+				cool: 0xa2d2ff,
+				warm: 0xffcad4,
+				strength: 0.08,
+			},
+			reliefShading: {
+				shadow: 0.9,
+				highlight: 1.02,
+				strength: 0.24,
+				curve: 1.08,
+			},
+			sideColor: 0xcaa5b8,
+			bottomColor: 0xb796aa,
+			roughness: 0.96,
+			metalness: 0.02,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x7bc8f6 },
+				{ t: 1.0, color: 0xc0fdff },
+			],
+			specularStrength: 0.32,
+			opacity: 0.48,
+			shoreTint: 0xffffff,
+			shoreWidth: 2,
+		}),
+		track: trackDefaults({
+			baseColor: 0xff8fab,
+			emissive: 0xffc2d1,
+			emissiveIntensity: 0.2,
+			roughness: 0.5,
+			metalness: 0.03,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0xff8fab },
+				{ t: 1.0, color: 0xffd166 },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0x7bd389,
+			finishColor: 0xffd166,
+			ringColor: 0xffffff,
+			ringOpacity: 0.24,
+			ringEmissive: 0xffdce8,
+			ringPulseSpeed: 1.15,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(255, 246, 227, 0.84)",
+			warningBorder: "rgba(255, 143, 171, 0.28)",
+			warningText: "#7e6388",
+			shadowColor: "rgba(89, 63, 96, 0.18)",
+			atmosphereGlow: "rgba(255, 143, 171, 0.16)",
+		}),
+	}),
+	rainbow: createTheme({
 		cssVars: {
 			"--bg-1": "#12142e",
 			"--bg-2": "#2a1d52",
@@ -335,26 +710,75 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		hemisphereIntensity: 1.4,
 		sunColor: 0xffffff,
 		sunIntensity: 1.45,
-		terrainStops: [
-			{ t: 0.0, color: 0xff595e },
-			{ t: 0.2, color: 0xff924c },
-			{ t: 0.4, color: 0xffca3a },
-			{ t: 0.6, color: 0x8ac926 },
-			{ t: 0.8, color: 0x1982c4 },
-			{ t: 1.0, color: 0x6a4c93 },
-		],
-		waterColorLow: 0x2d6cdf,
-		waterColorHigh: 0x7efcff,
-		sideColor: 0x3c2f58,
-		bottomColor: 0x241c37,
-		terrainRoughness: 0.88,
-		terrainMetalness: 0.09,
-		trackColor: 0xffffff,
-		trackEmissive: 0xff5e5b,
-		trackEmissiveIntensity: 0.5,
-		startColor: 0x7efcff,
-		finishColor: 0xfff275,
-		ringColor: 0xff5e5b,
-		ringOpacity: 0.3,
-	},
+		terrain: terrainDefaults({
+			elevationStops: [
+				{ t: 0.0, color: 0xff595e },
+				{ t: 0.2, color: 0xff924c },
+				{ t: 0.4, color: 0xffca3a },
+				{ t: 0.6, color: 0x8ac926 },
+				{ t: 0.8, color: 0x1982c4 },
+				{ t: 1.0, color: 0x6a4c93 },
+			],
+			slopeTint: {
+				low: 0x39284b,
+				high: 0xffffff,
+				strength: 0.26,
+				curve: 1.02,
+			},
+			aspectTint: {
+				cool: 0x7efcff,
+				warm: 0xff5e5b,
+				strength: 0.22,
+			},
+			reliefShading: {
+				shadow: 0.83,
+				highlight: 1.08,
+				strength: 0.6,
+				curve: 0.8,
+			},
+			sideColor: 0x3c2f58,
+			bottomColor: 0x241c37,
+			roughness: 0.88,
+			metalness: 0.09,
+		}),
+		water: waterDefaults({
+			surfaceStops: [
+				{ t: 0.0, color: 0x2d6cdf },
+				{ t: 1.0, color: 0x7efcff },
+			],
+			specularStrength: 0.64,
+			opacity: 0.62,
+			shoreTint: 0xfff275,
+			shoreWidth: 2,
+		}),
+		track: trackDefaults({
+			baseColor: 0xffffff,
+			emissive: 0xff5e5b,
+			emissiveIntensity: 0.5,
+			roughness: 0.28,
+			metalness: 0.12,
+			altitudeTintStops: [
+				{ t: 0.0, color: 0xff595e },
+				{ t: 0.2, color: 0xff924c },
+				{ t: 0.4, color: 0xffca3a },
+				{ t: 0.6, color: 0x8ac926 },
+				{ t: 0.8, color: 0x1982c4 },
+				{ t: 1.0, color: 0x6a4c93 },
+			],
+		}),
+		markers: markerDefaults({
+			startColor: 0x7efcff,
+			finishColor: 0xfff275,
+			ringColor: 0xff5e5b,
+			ringOpacity: 0.3,
+			ringEmissive: 0x6a4c93,
+			ringPulseSpeed: 2.25,
+		}),
+		hud: hudDefaults({
+			warningBackground: "rgba(39, 21, 78, 0.84)",
+			warningBorder: "rgba(255, 242, 117, 0.32)",
+			warningText: "#fff275",
+			atmosphereGlow: "rgba(255, 94, 91, 0.22)",
+		}),
+	}),
 };
