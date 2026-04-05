@@ -75,7 +75,10 @@ export type ViewerStyle =
 	| "hiking-map"
 	| "vaporwave"
 	| "lava"
-	| "water-world";
+	| "water-world"
+	| "dracula"
+	| "pastel"
+	| "rainbow";
 export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
 
 export type ViewerConfig = {

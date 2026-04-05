@@ -12,6 +12,9 @@ export const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
 	"vaporwave",
 	"lava",
 	"water-world",
+	"dracula",
+	"pastel",
+	"rainbow",
 ];
 export const SUPPORTED_HIKING_MAP_RESOLUTIONS: HikingMapResolution[] = [
 	"low",

@@ -110,7 +110,7 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	const [sourceLine, ...optionLines] = meaningfulLines;
 	if (/^(?:style|hiking-map-resolution)\s*:/i.test(sourceLine)) {
 		throw new Error(
-			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave|lava|water-world and optional hiking-map-resolution: low|standard|high|ultra below it.",
+			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave|lava|water-world|dracula|pastel|rainbow and optional hiking-map-resolution: low|standard|high|ultra below it.",
 		);
 	}
 
@@ -146,7 +146,7 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 		}
 
 		throw new Error(
-			`Unsupported cimal widget option "${line}". Supported options: style: classic|hiking-map|vaporwave|lava|water-world and hiking-map-resolution: low|standard|high|ultra.`,
+			`Unsupported cimal widget option "${line}". Supported options: style: classic|hiking-map|vaporwave|lava|water-world|dracula|pastel|rainbow and hiking-map-resolution: low|standard|high|ultra.`,
 		);
 	}
 
