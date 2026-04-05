@@ -27,10 +27,6 @@ export async function renderTerrainViewer(
 	const spanZ = (bounds.maxLat - bounds.minLat) * metersPerDegree.lat;
 	const sceneSpan = Math.max(spanX, spanZ);
 	const elevationRange = Math.max(1, grid.maxElevation - grid.minElevation);
-	const exaggeration = Math.min(
-		6,
-		Math.max(1.6, Math.max(spanX, spanZ) / (elevationRange * 18)),
-	);
 	const fogDensity = THREE.MathUtils.clamp(
 		0.075 / Math.max(sceneSpan, 1),
 		0.000045,
@@ -58,7 +54,7 @@ export async function renderTerrainViewer(
 	controls.zoomSpeed = 1;
 	controls.panSpeed = 0.9;
 	controls.screenSpacePanning = false;
-	controls.target.set(0, elevationRange * exaggeration * 0.18, 0);
+	controls.target.set(0, elevationRange * 0.18, 0);
 	controls.keyPanSpeed = Math.max(20, Math.min(spanX, spanZ) * 0.03);
 
 	const minCameraDistance = 80;
@@ -95,14 +91,12 @@ export async function renderTerrainViewer(
 		spanZ,
 		sceneSpan,
 		elevationRange,
-		exaggeration,
 	});
 	const trackLayer = createTrackLayer(THREE, payload, activeTheme, {
 		spanX,
 		spanZ,
 		sceneSpan,
 		elevationRange,
-		exaggeration,
 	});
 	scene.add(...terrainLayer.objects, ...trackLayer.objects);
 

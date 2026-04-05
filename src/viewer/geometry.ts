@@ -7,7 +7,6 @@ export function buildTrackRibbon(
 	width: number,
 	heightOffset: number,
 	minElevation: number,
-	exaggeration: number,
 ): ThreeType.BufferGeometry | null {
 	if (points.length < 2) {
 		return null;
@@ -19,7 +18,7 @@ export function buildTrackRibbon(
 		(point) =>
 			new THREE.Vector3(
 				point.x,
-				(point.y - minElevation) * exaggeration + heightOffset,
+				point.y - minElevation + heightOffset,
 				point.z,
 			),
 	);

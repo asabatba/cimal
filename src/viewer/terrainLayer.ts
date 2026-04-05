@@ -143,11 +143,10 @@ export function createTerrainLayer(
 		spanZ: number;
 		sceneSpan: number;
 		elevationRange: number;
-		exaggeration: number;
 	},
 ): TerrainLayer {
 	const { grid } = payload;
-	const { spanX, spanZ, sceneSpan, elevationRange, exaggeration } = options;
+	const { spanX, spanZ, sceneSpan, elevationRange } = options;
 	const appearanceForNormal = createTerrainAppearanceSampler(
 		THREE,
 		activeTheme,
@@ -181,7 +180,7 @@ export function createTerrainLayer(
 			const columnRatio = grid.width === 1 ? 0.5 : column / (grid.width - 1);
 			const x = (columnRatio - 0.5) * spanX;
 			const elevation = grid.elevations[row * grid.width + column];
-			const y = (elevation - grid.minElevation) * exaggeration;
+			const y = elevation - grid.minElevation;
 
 			positions[positionPointer] = x;
 			positions[positionPointer + 1] = y;
@@ -253,11 +252,7 @@ export function createTerrainLayer(
 	});
 	const terrain = new THREE.Mesh(geometry, terrainMaterial);
 
-	const terrainDepth = Math.max(
-		90,
-		elevationRange * exaggeration * 0.42,
-		sceneSpan * 0.08,
-	);
+	const terrainDepth = Math.max(90, elevationRange * 0.42, sceneSpan * 0.08);
 	const terrainBottomY = -terrainDepth;
 	const sideGeometry = buildTerrainSideGeometry(
 		THREE,

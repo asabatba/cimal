@@ -20,11 +20,10 @@ export function createTrackLayer(
 		spanZ: number;
 		sceneSpan: number;
 		elevationRange: number;
-		exaggeration: number;
 	},
 ): TrackLayer {
 	const { track, grid } = payload;
-	const { spanX, spanZ, sceneSpan, elevationRange, exaggeration } = options;
+	const { spanX, spanZ, sceneSpan, elevationRange } = options;
 	const trackStops = activeTheme.track.altitudeTintStops
 		? resolveColorStops(THREE, activeTheme.track.altitudeTintStops)
 		: null;
@@ -39,7 +38,6 @@ export function createTrackLayer(
 		trackRibbonWidth,
 		trackHeightOffset,
 		grid.minElevation,
-		exaggeration,
 	);
 
 	let trackMaterial: ThreeType.MeshStandardMaterial | null = null;
@@ -98,7 +96,7 @@ export function createTrackLayer(
 	const startMarker = new THREE.Mesh(markerGeometry, startMaterial);
 	startMarker.position.set(
 		start.x,
-		(start.y - grid.minElevation) * exaggeration + trackHeightOffset + 10,
+		start.y - grid.minElevation + trackHeightOffset + 10,
 		start.z,
 	);
 	objects.push(startMarker);
@@ -106,7 +104,7 @@ export function createTrackLayer(
 	const endMarker = new THREE.Mesh(markerGeometry, finishMaterial);
 	endMarker.position.set(
 		end.x,
-		(end.y - grid.minElevation) * exaggeration + trackHeightOffset + 10,
+		end.y - grid.minElevation + trackHeightOffset + 10,
 		end.z,
 	);
 	objects.push(endMarker);
