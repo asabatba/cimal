@@ -234,6 +234,13 @@ export async function buildTerrainPayloadFromTrackData(
 		throw new Error("No Copernicus DEM tiles were available for the GPX area.");
 	}
 
+	const unavailableTileCount = tiles.length - loadedTiles.length;
+
+	const partialDemWarning =
+		unavailableTileCount > 0
+			? `Terrain preview may be incomplete because ${unavailableTileCount} of ${tiles.length} Copernicus DEM tiles failed to load.`
+			: undefined;
+
 	const elevations: number[] = [];
 	let minElevation = Number.POSITIVE_INFINITY;
 	let maxElevation = Number.NEGATIVE_INFINITY;
@@ -285,6 +292,7 @@ export async function buildTerrainPayloadFromTrackData(
 	return {
 		title,
 		sourceUrl: gpxUrl,
+		warning: partialDemWarning,
 		bounds: paddedBounds,
 		center,
 		metersPerDegree,

@@ -70,7 +70,12 @@ export type TerrainPayload = {
 	};
 };
 
-export type ViewerStyle = "classic" | "hiking-map" | "vaporwave";
+export type ViewerStyle =
+	| "classic"
+	| "hiking-map"
+	| "vaporwave"
+	| "lava"
+	| "water-world";
 export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
 
 export type ViewerConfig = {

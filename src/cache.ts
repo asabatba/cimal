@@ -23,13 +23,13 @@ import type {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TILE_MAGIC = "TGPC";
+
 const memoryTileCache = new Map<string, SampledTile>();
 const memoryHikingMapTileCache = new Map<string, Uint8Array>();
 const memoryPackCache = new Map<string, Uint8Array>();
 
 type CacheStoreConfig<T> = {
 	version: number;
-	rootPath: string;
 	indexPath: string;
 	maxBytes: number;
 	memoryCache: Map<string, T>;
@@ -41,11 +41,11 @@ type CacheStoreConfig<T> = {
 
 type CacheStore<T> = {
 	getMemory(key: string): T | undefined;
-	loadIndex: () => Promise<TerrainCacheIndex>;
-	get: (key: string) => Promise<T | null>;
-	put: (key: string, path: string, value: T) => Promise<void>;
-	invalidate: (key: string) => Promise<void>;
-	clear: () => Promise<number>;
+	loadIndex(): Promise<TerrainCacheIndex>;
+	get(key: string): Promise<T | null>;
+	put(key: string, path: string, value: T): Promise<void>;
+	invalidate(key: string): Promise<void>;
+	clear(): Promise<number>;
 };
 
 function isUnsupportedCacheVersionError(error: unknown): boolean {
@@ -157,125 +157,6 @@ function decodeTile(data: Uint8Array): SampledTile {
 	};
 }
 
-async function loadIndex(): Promise<TerrainCacheIndex> {
-	if (memoryIndexCache) {
-		return memoryIndexCache;
-	}
-
-	if (!(await space.fileExists(TERRAIN_CACHE_INDEX_PATH))) {
-		memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
-		return memoryIndexCache;
-	}
-
-	try {
-		const data = await space.readFile(TERRAIN_CACHE_INDEX_PATH);
-		const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
-		if (parsed.version !== TERRAIN_CACHE_VERSION || !parsed.entries) {
-			await space.deleteFile(TERRAIN_CACHE_INDEX_PATH);
-			memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
-		} else {
-			memoryIndexCache = parsed;
-		}
-	} catch {
-		if (await space.fileExists(TERRAIN_CACHE_INDEX_PATH)) {
-			await space.deleteFile(TERRAIN_CACHE_INDEX_PATH);
-		}
-		memoryIndexCache = createEmptyIndex(TERRAIN_CACHE_VERSION);
-	}
-
-	return memoryIndexCache;
-}
-
-async function loadPackIndex(): Promise<TerrainCacheIndex> {
-	if (memoryPackIndexCache) {
-		return memoryPackIndexCache;
-	}
-
-	if (!(await space.fileExists(CIMAL_PACK_CACHE_INDEX_PATH))) {
-		memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
-		return memoryPackIndexCache;
-	}
-
-	try {
-		const data = await space.readFile(CIMAL_PACK_CACHE_INDEX_PATH);
-		const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
-		if (parsed.version !== CIMAL_PACK_CACHE_VERSION || !parsed.entries) {
-			await space.deleteFile(CIMAL_PACK_CACHE_INDEX_PATH);
-			memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
-		} else {
-			memoryPackIndexCache = parsed;
-		}
-	} catch {
-		if (await space.fileExists(CIMAL_PACK_CACHE_INDEX_PATH)) {
-			await space.deleteFile(CIMAL_PACK_CACHE_INDEX_PATH);
-		}
-		memoryPackIndexCache = createEmptyIndex(CIMAL_PACK_CACHE_VERSION);
-	}
-
-	return memoryPackIndexCache;
-}
-
-async function loadHikingMapTileIndex(): Promise<TerrainCacheIndex> {
-	if (memoryHikingMapTileIndexCache) {
-		return memoryHikingMapTileIndexCache;
-	}
-
-	if (!(await space.fileExists(HIKING_MAP_TILE_CACHE_INDEX_PATH))) {
-		memoryHikingMapTileIndexCache = createEmptyIndex(
-			HIKING_MAP_TILE_CACHE_VERSION,
-		);
-		return memoryHikingMapTileIndexCache;
-	}
-
-	try {
-		const data = await space.readFile(HIKING_MAP_TILE_CACHE_INDEX_PATH);
-		const parsed = JSON.parse(decoder.decode(data)) as TerrainCacheIndex;
-		if (parsed.version !== HIKING_MAP_TILE_CACHE_VERSION || !parsed.entries) {
-			await space.deleteFile(HIKING_MAP_TILE_CACHE_INDEX_PATH);
-			memoryHikingMapTileIndexCache = createEmptyIndex(
-				HIKING_MAP_TILE_CACHE_VERSION,
-			);
-		} else {
-			memoryHikingMapTileIndexCache = parsed;
-		}
-	} catch {
-		if (await space.fileExists(HIKING_MAP_TILE_CACHE_INDEX_PATH)) {
-			await space.deleteFile(HIKING_MAP_TILE_CACHE_INDEX_PATH);
-		}
-		memoryHikingMapTileIndexCache = createEmptyIndex(
-			HIKING_MAP_TILE_CACHE_VERSION,
-		);
-	}
-
-	return memoryHikingMapTileIndexCache;
-}
-
-async function persistIndex(index: TerrainCacheIndex): Promise<void> {
-	memoryIndexCache = index;
-	await space.writeFile(
-		TERRAIN_CACHE_INDEX_PATH,
-		encoder.encode(JSON.stringify(index)),
-	);
-}
-
-async function persistPackIndex(index: TerrainCacheIndex): Promise<void> {
-	memoryPackIndexCache = index;
-	await space.writeFile(
-		CIMAL_PACK_CACHE_INDEX_PATH,
-		encoder.encode(JSON.stringify(index)),
-	);
-}
-
-async function persistHikingMapTileIndex(
-	index: TerrainCacheIndex,
-): Promise<void> {
-	memoryHikingMapTileIndexCache = index;
-	await space.writeFile(
-		HIKING_MAP_TILE_CACHE_INDEX_PATH,
-		encoder.encode(JSON.stringify(index)),
-	);
-}
-
 function totalCacheBytes(index: TerrainCacheIndex): number {
 	return Object.values(index.entries).reduce(
 		(sum, entry) => sum + entry.size,
@@ -361,9 +242,8 @@ function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
 		},
 		loadIndex,
 		async get(key: string): Promise<T | null> {
-			const memoryCachedValue = config.memoryCache.get(key);
-			if (memoryCachedValue) {
-				return memoryCachedValue;
+			if (config.memoryCache.has(key)) {
+				return config.memoryCache.get(key) ?? null;
 			}
 
 			const index = await loadIndex();
@@ -446,7 +326,6 @@ function encodeRawBytes(bytes: Uint8Array): Uint8Array {
 
 const tileCacheStore = createCacheStore<SampledTile>({
 	version: TERRAIN_CACHE_VERSION,
-	rootPath: TERRAIN_CACHE_ROOT,
 	indexPath: TERRAIN_CACHE_INDEX_PATH,
 	maxBytes: TERRAIN_CACHE_MAX_BYTES,
 	memoryCache: memoryTileCache,
@@ -466,7 +345,6 @@ const tileCacheStore = createCacheStore<SampledTile>({
 
 const packCacheStore = createCacheStore<Uint8Array>({
 	version: CIMAL_PACK_CACHE_VERSION,
-	rootPath: CIMAL_PACK_CACHE_ROOT,
 	indexPath: CIMAL_PACK_CACHE_INDEX_PATH,
 	maxBytes: CIMAL_PACK_CACHE_MAX_BYTES,
 	memoryCache: memoryPackCache,
@@ -477,7 +355,6 @@ const packCacheStore = createCacheStore<Uint8Array>({
 
 const hikingMapTileCacheStore = createCacheStore<Uint8Array>({
 	version: HIKING_MAP_TILE_CACHE_VERSION,
-	rootPath: HIKING_MAP_TILE_CACHE_ROOT,
 	indexPath: HIKING_MAP_TILE_CACHE_INDEX_PATH,
 	maxBytes: HIKING_MAP_TILE_CACHE_MAX_BYTES,
 	memoryCache: memoryHikingMapTileCache,
@@ -485,6 +362,10 @@ const hikingMapTileCacheStore = createCacheStore<Uint8Array>({
 	decode: decodeRawBytes,
 	deleteMemoryEntry: (key) => memoryHikingMapTileCache.delete(key),
 });
+
+const registeredStores: Array<
+	Pick<CacheStore<unknown>, "clear" | "loadIndex">
+> = [tileCacheStore, packCacheStore, hikingMapTileCacheStore];
 
 export function buildSampledTileCacheEntry(
 	key: string,
@@ -546,6 +427,18 @@ export async function getCachedPack(key: string): Promise<Uint8Array | null> {
 	return packCacheStore.get(key);
 }
 
+export async function putCachedPack(
+	key: string,
+	path: string,
+	packed: Uint8Array,
+): Promise<void> {
+	await packCacheStore.put(key, path, packed);
+}
+
+export async function invalidateCachedPack(key: string): Promise<void> {
+	await packCacheStore.invalidate(key);
+}
+
 export async function getCachedHikingMapTile(
 	key: string,
 ): Promise<Uint8Array | null> {
@@ -560,41 +453,29 @@ export async function putCachedHikingMapTile(
 	await hikingMapTileCacheStore.put(key, path, bytes);
 }
 
-export async function invalidateCachedPack(key: string): Promise<void> {
-	await packCacheStore.invalidate(key);
-}
-
-export async function putCachedPack(
-	key: string,
-	path: string,
-	packed: Uint8Array,
-): Promise<void> {
-	await packCacheStore.put(key, path, packed);
-}
-
 export async function clearTerrainCache(): Promise<number> {
-	const stores = [tileCacheStore, packCacheStore, hikingMapTileCacheStore];
 	let clearedEntries = 0;
-	for (const store of stores) {
+	for (const store of registeredStores) {
 		clearedEntries += await store.clear();
 	}
 	return clearedEntries;
 }
 
 export async function showTerrainCacheStats(): Promise<void> {
-	const index = await tileCacheStore.loadIndex();
-	const entries = Object.values(index.entries);
-	const packIndex = await packCacheStore.loadIndex();
+	const [terrainIndex, packIndex, hikingMapTileIndex] = await Promise.all(
+		registeredStores.map((store) => store.loadIndex()),
+	);
+	const terrainEntries = Object.values(terrainIndex.entries);
 	const packEntries = Object.values(packIndex.entries);
-	const hikingMapTileIndex = await hikingMapTileCacheStore.loadIndex();
 	const hikingMapTileEntries = Object.values(hikingMapTileIndex.entries);
 	const totalBytes =
-		totalCacheBytes(index) +
+		totalCacheBytes(terrainIndex) +
 		totalCacheBytes(packIndex) +
 		totalCacheBytes(hikingMapTileIndex);
 	const totalMegabytes = (totalBytes / (1024 * 1024)).toFixed(1);
+
 	await editor.flashNotification(
-		`Terrain cache: ${entries.length} DEM tile samples, ${hikingMapTileEntries.length} hiking-map tiles, ${packEntries.length} .cimal packs, ${totalMegabytes} MB`,
+		`Terrain cache: ${terrainEntries.length} DEM tile samples, ${hikingMapTileEntries.length} hiking-map tiles, ${packEntries.length} .cimal packs, ${totalMegabytes} MB`,
 	);
 }
 

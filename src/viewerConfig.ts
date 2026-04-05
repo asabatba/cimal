@@ -1,4 +1,8 @@
-import type { HikingMapResolution, ViewerConfig, ViewerStyle } from "./types.ts";
+import type {
+	HikingMapResolution,
+	ViewerConfig,
+	ViewerStyle,
+} from "./types.ts";
 
 export const DEFAULT_VIEWER_STYLE: ViewerStyle = "classic";
 export const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
@@ -6,6 +10,8 @@ export const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
 	"classic",
 	"hiking-map",
 	"vaporwave",
+	"lava",
+	"water-world",
 ];
 export const SUPPORTED_HIKING_MAP_RESOLUTIONS: HikingMapResolution[] = [
 	"low",

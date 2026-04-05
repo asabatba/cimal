@@ -1,4 +1,5 @@
 import { CIMAL_PACK_VERSION } from "./constants.ts";
+import { bytesToDataUrl, dataUrlToBytes } from "./dataUrl.ts";
 import type { CimalPackHeader, LocalPoint, TerrainPayload } from "./types.ts";
 
 const encoder = new TextEncoder();
@@ -13,14 +14,17 @@ function align4(n: number): number {
 	return (n + 3) & ~3;
 }
 
-function encodeHeader(payload: TerrainPayload): Uint8Array {
+function encodeHeader(
+	payload: TerrainPayload,
+	bakedHikingMapByteLength: number,
+): Uint8Array {
 	const bakedHikingMap = payload.bakedHikingMap
 		? {
 				width: payload.bakedHikingMap.width,
 				height: payload.bakedHikingMap.height,
 				mimeType: payload.bakedHikingMap.mimeType,
 				resolution: payload.bakedHikingMap.resolution,
-				byteLength: dataUrlToBytes(payload.bakedHikingMap.dataUrl).byteLength,
+				byteLength: bakedHikingMapByteLength,
 			}
 		: undefined;
 
@@ -84,47 +88,15 @@ function toByteView(values: Uint16Array | Float32Array): Uint8Array {
 	);
 }
 
-function dataUrlToBytes(dataUrl: string): Uint8Array {
-	const parts = dataUrl.split(",", 2);
-	if (parts.length !== 2) {
-		throw new Error("Invalid baked hiking-map texture data URL.");
-	}
-
-	const [, base64Payload] = parts;
-	if (typeof atob !== "function") {
-		throw new Error("Base64 decoding is unavailable in this runtime.");
-	}
-
-	const binary = atob(base64Payload);
-	const bytes = new Uint8Array(binary.length);
-	for (let index = 0; index < binary.length; index += 1) {
-		bytes[index] = binary.charCodeAt(index);
-	}
-	return bytes;
-}
-
-function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
-	if (typeof btoa !== "function") {
-		throw new Error("Base64 encoding is unavailable in this runtime.");
-	}
-
-	let binary = "";
-	for (let index = 0; index < bytes.length; index += 1) {
-		binary += String.fromCharCode(bytes[index]);
-	}
-	const base64 = btoa(binary);
-	return `data:${mimeType};base64,${base64}`;
-}
-
 export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
-	const headerBytes = encodeHeader(payload);
+	const bakedHikingMapBytes = payload.bakedHikingMap
+		? dataUrlToBytes(payload.bakedHikingMap.dataUrl)
+		: new Uint8Array(0);
+	const headerBytes = encodeHeader(payload, bakedHikingMapBytes.byteLength);
 	const headerPaddedLength = align4(headerBytes.length);
 	const gridBytes = toByteView(quantizeGrid(payload));
 	const gridPaddedLength = align4(gridBytes.length);
 	const trackBytes = toByteView(encodeTrack(payload.track));
-	const bakedHikingMapBytes = payload.bakedHikingMap
-		? dataUrlToBytes(payload.bakedHikingMap.dataUrl)
-		: new Uint8Array(0);
 	const output = new Uint8Array(
 		PACK_PREAMBLE_BYTES +
 			headerPaddedLength +

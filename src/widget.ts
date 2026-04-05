@@ -7,7 +7,6 @@ import {
 	putCachedPack,
 } from "./cache.ts";
 import { readGpxXml } from "./gpx.ts";
-import type { ResolvedWidgetSource } from "./input.ts";
 import { parseWidgetConfig, resolveWidgetSource } from "./input.ts";
 import {
 	decodeTerrainPack,
@@ -103,7 +102,11 @@ async function loadOrBuildGpxPayload(
 		hikingMapResolution,
 	});
 	const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
-	await putCachedPack(cacheEntry.key, cacheEntry.path, encodeTerrainPack(payload));
+	await putCachedPack(
+		cacheEntry.key,
+		cacheEntry.path,
+		encodeTerrainPack(payload),
+	);
 	return payload;
 }
 
@@ -135,9 +138,12 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		return buildWidgetErrorResult("Cimal widget configuration error", message);
 	}
 
-	const { source: _source, hasExplicitHikingMapResolution: _resolution, ...viewerConfig } =
-		widgetConfig;
-	let resolvedSource: ResolvedWidgetSource;
+	const {
+		source: _source,
+		hasExplicitHikingMapResolution: _resolution,
+		...viewerConfig
+	} = widgetConfig;
+	let resolvedSource: ReturnType<typeof resolveWidgetSource>;
 	try {
 		resolvedSource = resolveWidgetSource(widgetConfig);
 	} catch (error) {

@@ -1,0 +1,236 @@
+import type { ViewerStyle } from "../types.ts";
+
+export type ViewerTheme = {
+	cssVars: Record<string, string>;
+	styleDescription: string;
+	useHikingMap: boolean;
+	useWaterTint: boolean;
+	fogColor: number;
+	hemisphereSky: number;
+	hemisphereGround: number;
+	hemisphereIntensity: number;
+	sunColor: number;
+	sunIntensity: number;
+	terrainStops: Array<{ t: number; color: number }>;
+	waterColorLow: number;
+	waterColorHigh: number;
+	sideColor: number;
+	bottomColor: number;
+	terrainRoughness: number;
+	terrainMetalness: number;
+	trackColor: number;
+	trackEmissive: number;
+	trackEmissiveIntensity: number;
+	startColor: number;
+	finishColor: number;
+	ringColor: number;
+	ringOpacity: number;
+};
+
+export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
+	classic: {
+		cssVars: {
+			"--bg-1": "#0d151b",
+			"--bg-2": "#1d2c38",
+			"--card": "rgba(11, 18, 23, 0.78)",
+			"--card-border": "rgba(255, 255, 255, 0.12)",
+			"--accent": "#ff7b32",
+			"--accent-soft": "#ffd08f",
+			"--text": "#eaf2f5",
+			"--muted": "#9db0bb",
+		},
+		styleDescription: "Style: Classic relief tint.",
+		useHikingMap: false,
+		useWaterTint: true,
+		fogColor: 0x102029,
+		hemisphereSky: 0xdaf2ff,
+		hemisphereGround: 0x1b272b,
+		hemisphereIntensity: 1.2,
+		sunColor: 0xfff1d6,
+		sunIntensity: 1.2,
+		terrainStops: [
+			{ t: 0.0, color: 0x2f5a38 },
+			{ t: 0.24, color: 0x5f8148 },
+			{ t: 0.52, color: 0xae8d5a },
+			{ t: 0.78, color: 0x757982 },
+			{ t: 1.0, color: 0xe6e2d9 },
+		],
+		waterColorLow: 0x1e5a85,
+		waterColorHigh: 0x5dbaf2,
+		sideColor: 0x544d42,
+		bottomColor: 0x403a31,
+		terrainRoughness: 0.94,
+		terrainMetalness: 0.04,
+		trackColor: 0xff7b32,
+		trackEmissive: 0x4a220c,
+		trackEmissiveIntensity: 0.35,
+		startColor: 0x9fe870,
+		finishColor: 0xffd35a,
+		ringColor: 0xffffff,
+		ringOpacity: 0.18,
+	},
+	"hiking-map": {
+		cssVars: {
+			"--bg-1": "#0f1718",
+			"--bg-2": "#21353a",
+			"--card": "rgba(12, 20, 20, 0.78)",
+			"--card-border": "rgba(255, 255, 255, 0.12)",
+			"--accent": "#f18f43",
+			"--accent-soft": "#ffe2a7",
+			"--text": "#eaf2f5",
+			"--muted": "#a2b7b0",
+		},
+		styleDescription: "Imagery: baked OpenHikingMap texture.",
+		useHikingMap: true,
+		useWaterTint: false,
+		fogColor: 0x112326,
+		hemisphereSky: 0xe0f0f6,
+		hemisphereGround: 0x22302b,
+		hemisphereIntensity: 1.25,
+		sunColor: 0xfff2d2,
+		sunIntensity: 1.25,
+		terrainStops: [
+			{ t: 0.0, color: 0x2f5a38 },
+			{ t: 0.24, color: 0x5f8148 },
+			{ t: 0.52, color: 0xae8d5a },
+			{ t: 0.78, color: 0x757982 },
+			{ t: 1.0, color: 0xe6e2d9 },
+		],
+		waterColorLow: 0x1e5a85,
+		waterColorHigh: 0x5dbaf2,
+		sideColor: 0x544d42,
+		bottomColor: 0x403a31,
+		terrainRoughness: 0.94,
+		terrainMetalness: 0.04,
+		trackColor: 0xff7b32,
+		trackEmissive: 0x4a220c,
+		trackEmissiveIntensity: 0.35,
+		startColor: 0x9fe870,
+		finishColor: 0xffd35a,
+		ringColor: 0xffffff,
+		ringOpacity: 0.18,
+	},
+	vaporwave: {
+		cssVars: {
+			"--bg-1": "#120621",
+			"--bg-2": "#471565",
+			"--card": "rgba(23, 10, 41, 0.76)",
+			"--card-border": "rgba(255, 255, 255, 0.18)",
+			"--accent": "#ff5fd1",
+			"--accent-soft": "#7efcff",
+			"--text": "#f8edff",
+			"--muted": "#d3a9ea",
+		},
+		styleDescription: "Style: Vaporwave flavour.",
+		useHikingMap: false,
+		useWaterTint: true,
+		fogColor: 0x1b0b2f,
+		hemisphereSky: 0x8acfff,
+		hemisphereGround: 0x25083b,
+		hemisphereIntensity: 1.35,
+		sunColor: 0xff8dd8,
+		sunIntensity: 1.45,
+		terrainStops: [
+			{ t: 0.0, color: 0x16113f },
+			{ t: 0.22, color: 0x4a1f7a },
+			{ t: 0.48, color: 0xff4fd8 },
+			{ t: 0.76, color: 0xffa26b },
+			{ t: 1.0, color: 0x7efcff },
+		],
+		waterColorLow: 0x187bff,
+		waterColorHigh: 0x72f7ff,
+		sideColor: 0x31164f,
+		bottomColor: 0x190826,
+		terrainRoughness: 0.86,
+		terrainMetalness: 0.08,
+		trackColor: 0x7efcff,
+		trackEmissive: 0x2f8cff,
+		trackEmissiveIntensity: 0.55,
+		startColor: 0x7efcff,
+		finishColor: 0xffe36e,
+		ringColor: 0xff5fd1,
+		ringOpacity: 0.3,
+	},
+	lava: {
+		cssVars: {
+			"--bg-1": "#1a0906",
+			"--bg-2": "#4b160b",
+			"--card": "rgba(33, 10, 6, 0.8)",
+			"--card-border": "rgba(255, 173, 96, 0.18)",
+			"--accent": "#ff5a1f",
+			"--accent-soft": "#ffd166",
+			"--text": "#fff0e6",
+			"--muted": "#d6a48d",
+		},
+		styleDescription: "Style: Volcanic lava glow.",
+		useHikingMap: false,
+		useWaterTint: false,
+		fogColor: 0x230904,
+		hemisphereSky: 0xffb36b,
+		hemisphereGround: 0x2a0b08,
+		hemisphereIntensity: 1.25,
+		sunColor: 0xff8c42,
+		sunIntensity: 1.55,
+		terrainStops: [
+			{ t: 0.0, color: 0x250d0a },
+			{ t: 0.22, color: 0x5a1f0f },
+			{ t: 0.48, color: 0x9e3114 },
+			{ t: 0.76, color: 0xe75b1a },
+			{ t: 1.0, color: 0xffd27a },
+		],
+		waterColorLow: 0x5a190f,
+		waterColorHigh: 0xff6b2c,
+		sideColor: 0x3c1812,
+		bottomColor: 0x25100d,
+		terrainRoughness: 0.92,
+		terrainMetalness: 0.08,
+		trackColor: 0xffd166,
+		trackEmissive: 0xa62b10,
+		trackEmissiveIntensity: 0.75,
+		startColor: 0xff8c42,
+		finishColor: 0xfff3b0,
+		ringColor: 0xff7a2f,
+		ringOpacity: 0.28,
+	},
+	"water-world": {
+		cssVars: {
+			"--bg-1": "#071722",
+			"--bg-2": "#0f4361",
+			"--card": "rgba(7, 24, 35, 0.78)",
+			"--card-border": "rgba(163, 227, 255, 0.18)",
+			"--accent": "#3fc3ff",
+			"--accent-soft": "#b8fff5",
+			"--text": "#ebfbff",
+			"--muted": "#9fcfdb",
+		},
+		styleDescription: "Style: Oceanic blue world.",
+		useHikingMap: false,
+		useWaterTint: true,
+		fogColor: 0x0a2232,
+		hemisphereSky: 0xb7edff,
+		hemisphereGround: 0x0d3340,
+		hemisphereIntensity: 1.35,
+		sunColor: 0xe6fff8,
+		sunIntensity: 1.3,
+		terrainStops: [
+			{ t: 0.0, color: 0x0e3a4b },
+			{ t: 0.24, color: 0x16627c },
+			{ t: 0.52, color: 0x1d89a0 },
+			{ t: 0.78, color: 0x6fc7d4 },
+			{ t: 1.0, color: 0xe0fff7 },
+		],
+		waterColorLow: 0x0f5b9a,
+		waterColorHigh: 0x67e2ff,
+		sideColor: 0x114054,
+		bottomColor: 0x0a2834,
+		terrainRoughness: 0.9,
+		terrainMetalness: 0.06,
+		trackColor: 0xb8fff5,
+		trackEmissive: 0x1f7ba5,
+		trackEmissiveIntensity: 0.45,
+		startColor: 0x7efcff,
+		finishColor: 0xffffff,
+		ringColor: 0x67e2ff,
+		ringOpacity: 0.26,
+	},
+};

@@ -4,6 +4,7 @@ import {
 	getCachedHikingMapTile,
 	putCachedHikingMapTile,
 } from "./cache.ts";
+import { bytesToDataUrl, dataUrlMimeType } from "./dataUrl.ts";
 import type {
 	BakedHikingMapTexture,
 	GeoBounds,
@@ -185,23 +186,6 @@ function pickTileCoverage(
 	return fallback;
 }
 
-function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
-	if (typeof btoa !== "function") {
-		throw new Error("Base64 encoding is unavailable in this runtime.");
-	}
-
-	let binary = "";
-	for (let index = 0; index < bytes.length; index += 1) {
-		binary += String.fromCharCode(bytes[index]);
-	}
-	return `data:${mimeType};base64,${btoa(binary)}`;
-}
-
-function dataUrlMimeType(dataUrl: string): string {
-	const match = /^data:([^;,]+)[;,]/i.exec(dataUrl);
-	return match?.[1] ?? "application/octet-stream";
-}
-
 function createRasterCanvas(width: number, height: number): RasterCanvas {
 	if (typeof OffscreenCanvas !== "undefined") {
 		return new OffscreenCanvas(width, height);
@@ -231,35 +215,6 @@ function loadDomImage(url: string): Promise<HTMLImageElement> {
 			reject(new Error(`Failed to load raster tile ${url}`));
 		image.src = url;
 	});
-}
-
-async function loadTileImage(url: string): Promise<RasterImage> {
-	const response = await fetch(url);
-	if (!response.ok) {
-		throw new Error(
-			`Failed to load raster tile ${url}: HTTP ${response.status}`,
-		);
-	}
-
-	const blob = await response.blob();
-	if (typeof createImageBitmap === "function") {
-		return createImageBitmap(blob);
-	}
-
-	if (
-		hasDomImageSupport() &&
-		typeof URL !== "undefined" &&
-		typeof URL.createObjectURL === "function"
-	) {
-		const objectUrl = URL.createObjectURL(blob);
-		try {
-			return await loadDomImage(objectUrl);
-		} finally {
-			URL.revokeObjectURL(objectUrl);
-		}
-	}
-
-	throw new Error("Tile image decoding is unavailable in this runtime.");
 }
 
 async function loadTileBytes(url: string): Promise<Uint8Array> {
