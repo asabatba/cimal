@@ -19,6 +19,7 @@ import {
 	metersPerDegreeAtLatitude,
 	projectToLocalMeters,
 } from "./math.ts";
+import { computeTrackMetrics } from "./trackMetrics.ts";
 import type {
 	GeoBounds,
 	GeoPoint,
@@ -166,34 +167,6 @@ function snapTrackToTerrain(
 	});
 }
 
-function computeTrackElevationStats(points: LocalPoint[]): {
-	totalAscent: number;
-	totalDescent: number;
-	distanceKm: number;
-} {
-	let totalAscent = 0;
-	let totalDescent = 0;
-	let distanceMeters = 0;
-
-	for (let index = 1; index < points.length; index += 1) {
-		const previous = points[index - 1];
-		const current = points[index];
-		distanceMeters += computeDistanceMeters(previous, current);
-		const delta = current.elevation - previous.elevation;
-		if (delta > 0) {
-			totalAscent += delta;
-		} else {
-			totalDescent += Math.abs(delta);
-		}
-	}
-
-	return {
-		totalAscent,
-		totalDescent,
-		distanceKm: distanceMeters / 1000,
-	};
-}
-
 export async function buildTerrainPayloadFromTrackData(
 	track: Awaited<ReturnType<typeof fetchTrackData>>,
 	options: TerrainBuildOptions = {},
@@ -271,7 +244,10 @@ export async function buildTerrainPayloadFromTrackData(
 		metersPerDegree,
 	);
 
-	const elevationStats = computeTrackElevationStats(renderedTrack);
+	const elevationStats = computeTrackMetrics(
+		renderedTrack,
+		(point) => point.elevation,
+	);
 	const title = gpxUrl.split("/").filter(Boolean).pop() ?? "GPX track";
 	let bakedHikingMap: TerrainPayload["bakedHikingMap"];
 
@@ -306,7 +282,8 @@ export async function buildTerrainPayloadFromTrackData(
 		track: renderedTrack,
 		bakedHikingMap,
 		stats: {
-			distanceKm: elevationStats.distanceKm || track.distanceMeters / 1000,
+			distanceKm:
+				elevationStats.distanceMeters / 1000 || track.distanceMeters / 1000,
 			totalAscent: elevationStats.totalAscent || track.totalAscent,
 			totalDescent: elevationStats.totalDescent || track.totalDescent,
 			pointCount: track.points.length,

@@ -14,6 +14,18 @@ type ResolvedWidgetSource =
 	| { kind: "pack"; packPath: string }
 	| { kind: "gpx"; gpxSource: string };
 
+function formatSupportedValues(values: readonly string[]): string {
+	return values.join("|");
+}
+
+function formatSupportedList(values: readonly string[]): string {
+	return values.join(", ");
+}
+
+function supportedWidgetOptionsHelpText(): string {
+	return `style: ${formatSupportedValues(SUPPORTED_VIEWER_STYLES)} and optional hiking-map-resolution: ${formatSupportedValues(SUPPORTED_HIKING_MAP_RESOLUTIONS)}`;
+}
+
 function isRemoteUrl(candidate: string): boolean {
 	return /^https?:\/\//i.test(candidate);
 }
@@ -65,10 +77,6 @@ export function normalizeGpxSource(input: string): string {
 	return url.toString();
 }
 
-export function normalizeGpxUrl(input: string): string {
-	return normalizeGpxSource(input);
-}
-
 export function normalizeViewerStyle(input: string): ViewerStyle {
 	const normalized = input.trim().toLowerCase();
 	if (SUPPORTED_VIEWER_STYLES.includes(normalized as ViewerStyle)) {
@@ -76,7 +84,7 @@ export function normalizeViewerStyle(input: string): ViewerStyle {
 	}
 
 	throw new Error(
-		`Unsupported cimal style "${input.trim()}". Supported styles: ${SUPPORTED_VIEWER_STYLES.join(", ")}.`,
+		`Unsupported cimal style "${input.trim()}". Supported styles: ${formatSupportedList(SUPPORTED_VIEWER_STYLES)}.`,
 	);
 }
 
@@ -91,7 +99,7 @@ export function normalizeHikingMapResolution(
 	}
 
 	throw new Error(
-		`Unsupported hiking-map-resolution "${input.trim()}". Supported values: ${SUPPORTED_HIKING_MAP_RESOLUTIONS.join(", ")}.`,
+		`Unsupported hiking-map-resolution "${input.trim()}". Supported values: ${formatSupportedList(SUPPORTED_HIKING_MAP_RESOLUTIONS)}.`,
 	);
 }
 
@@ -110,7 +118,7 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	const [sourceLine, ...optionLines] = meaningfulLines;
 	if (/^(?:style|hiking-map-resolution)\s*:/i.test(sourceLine)) {
 		throw new Error(
-			"Put the .cimal path or GPX source on the first line, then add style: classic|hiking-map|vaporwave|lava|water-world|dracula|pastel|rainbow and optional hiking-map-resolution: low|standard|high|ultra below it.",
+			`Put the .cimal path or GPX source on the first line, then add ${supportedWidgetOptionsHelpText()} below it.`,
 		);
 	}
 
@@ -146,7 +154,7 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 		}
 
 		throw new Error(
-			`Unsupported cimal widget option "${line}". Supported options: style: classic|hiking-map|vaporwave|lava|water-world|dracula|pastel|rainbow and hiking-map-resolution: low|standard|high|ultra.`,
+			`Unsupported cimal widget option "${line}". Supported options: ${supportedWidgetOptionsHelpText()}.`,
 		);
 	}
 
@@ -164,20 +172,6 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	};
 }
 
-export function extractGpxSource(bodyText: string): string {
-	const resolvedSource = resolveWidgetSource(parseWidgetConfig(bodyText));
-	if (resolvedSource.kind !== "gpx") {
-		throw new Error(
-			"Cimal widgets now accept only GPX URLs or space paths here.",
-		);
-	}
-	return resolvedSource.gpxSource;
-}
-
-export function extractGpxUrl(bodyText: string): string {
-	return extractGpxSource(bodyText);
-}
-
 export function normalizePackPath(input: string): string {
 	const normalized = normalizeSpacePath(input);
 	if (isRemoteUrl(normalized) || /\.gpx$/i.test(normalized)) {
@@ -186,16 +180,6 @@ export function normalizePackPath(input: string): string {
 		);
 	}
 	return normalized.endsWith(".cimal") ? normalized : `${normalized}.cimal`;
-}
-
-export function extractPackPath(bodyText: string): string {
-	const resolvedSource = resolveWidgetSource(parseWidgetConfig(bodyText));
-	if (resolvedSource.kind !== "pack") {
-		throw new Error(
-			"Cimal widgets now accept only .cimal pack paths. Build a pack from the GPX first.",
-		);
-	}
-	return resolvedSource.packPath;
 }
 
 export function resolveWidgetSource(

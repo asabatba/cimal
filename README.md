@@ -8,12 +8,12 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Inserts a `cimal` code widget block that points at a `.cimal` pack file.
 - Auto-builds and caches `.cimal` packs when a widget body contains a GPX source.
 - Loads the surrounding Copernicus DEM tiles from the public AWS bucket.
-- Supports three per-widget visual styles: `classic`, `hiking-map`, and `vaporwave`.
+- Supports per-widget visual styles: `classic`, `hiking-map`, `vaporwave`, `lava`, `water-world`, `dracula`, `pastel`, and `rainbow`.
 - Bakes OpenHikingMap imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: hiking-map` is selected.
 - Supports hiking-map imagery presets: `low`, `standard`, `high`, and `ultra`.
 - Falls back to classic elevation-based terrain shading when a pack has no baked hiking-map imagery.
-- Highlights likely water bodies in blue in the `classic` and `vaporwave` styles using DEM-based detection.
-- Renders the route as an interactive Three.js scene with orbit controls and basic route stats.
+- Highlights likely water bodies in blue in the non-hiking-map shaded styles using DEM-based detection.
+- Renders the route as an interactive Three.js scene with orbit controls.
 
 ## Usage
 
@@ -57,18 +57,18 @@ hiking-map-resolution: high
 ```
 ````
 
-Or use the vaporwave viewer flavour on any widget instance:
+Or use one of the alternative viewer styles on any widget instance:
 
 ````markdown
 ```cimal
 Library/Cimal/track.cimal
-style: vaporwave
+style: dracula
 ```
 ````
 
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
-The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
+The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|vaporwave|lava|water-world|dracula|pastel|rainbow` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
 
 When the widget body points at a GPX source and `style: hiking-map` is active, you can also add `hiking-map-resolution: low|standard|high|ultra`. That resolution is baked into the generated `.cimal` pack and cached separately per preset. Higher presets use more network requests and produce larger embedded textures.
 
@@ -76,7 +76,7 @@ When the widget body points at an existing `.cimal` pack, `hiking-map-resolution
 
 New `.cimal` packs now attempt to bake OpenHikingMap imagery during pack creation. If that imagery fetch or bake step fails, the pack is still written with terrain and track data only, and the viewer falls back to the built-in classic relief tint for `style: hiking-map`.
 
-The shaded styles (`classic` and `vaporwave`) also apply a heuristic water-body detector that looks for large contiguous flat plateaus in the DEM and paints them blue. This is intentionally conservative and may miss some smaller lakes or reservoirs rather than over-painting terraces and other flat terrain. The `hiking-map` style does not add this synthetic blue overlay.
+The shaded styles (`classic`, `vaporwave`, `lava`, `water-world`, `dracula`, `pastel`, and `rainbow`) also apply a heuristic water-body detector that looks for large contiguous flat plateaus in the DEM and paints them blue. This is intentionally conservative and may miss some smaller lakes or reservoirs rather than over-painting terraces and other flat terrain. The `hiking-map` style does not add this synthetic blue overlay.
 
 If a `cimal` widget contains a raw GPX URL or GPX space path, Cimal now builds a `.cimal` pack automatically and caches it under `Library/.cache/cimal/packs/`. The cache key includes the GPX content hash, so editing a space GPX file produces a fresh cached pack.
 

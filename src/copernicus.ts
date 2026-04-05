@@ -1,4 +1,3 @@
-import { space } from "@silverbulletmd/silverbullet/syscalls";
 import { fromArrayBuffer } from "geotiff";
 import {
 	buildSampledTileCacheEntry,
@@ -264,8 +263,14 @@ export function sampleTileElevation(
 		return samples.reduce((sum, value) => sum + value, 0) / samples.length;
 	}
 
-	const top = topLeft! * (1 - tx) + topRight! * tx;
-	const bottom = bottomLeft! * (1 - tx) + bottomRight! * tx;
+	const [
+		resolvedTopLeft,
+		resolvedTopRight,
+		resolvedBottomLeft,
+		resolvedBottomRight,
+	] = samples;
+	const top = resolvedTopLeft * (1 - tx) + resolvedTopRight * tx;
+	const bottom = resolvedBottomLeft * (1 - tx) + resolvedBottomRight * tx;
 	return top * (1 - ty) + bottom * ty;
 }
 

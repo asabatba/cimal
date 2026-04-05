@@ -23,6 +23,7 @@ import type {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const TILE_MAGIC = "TGPC";
+const INDEX_WRITE_DEBOUNCE_MS = 1000;
 
 const memoryTileCache = new Map<string, SampledTile>();
 const memoryHikingMapTileCache = new Map<string, Uint8Array>();
@@ -166,8 +167,10 @@ function totalCacheBytes(index: TerrainCacheIndex): number {
 
 function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
 	let memoryIndexCache: TerrainCacheIndex | null = null;
+	let pendingUsagePersist = false;
+	let scheduledPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
-	async function persistIndex(index: TerrainCacheIndex): Promise<void> {
+	async function writeIndex(index: TerrainCacheIndex): Promise<void> {
 		memoryIndexCache = index;
 		await space.writeFile(
 			config.indexPath,
@@ -175,7 +178,44 @@ function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
 		);
 	}
 
+	function cancelScheduledPersist(): void {
+		if (scheduledPersistTimer != null) {
+			clearTimeout(scheduledPersistTimer);
+			scheduledPersistTimer = null;
+		}
+		pendingUsagePersist = false;
+	}
+
+	async function persistIndex(index: TerrainCacheIndex): Promise<void> {
+		cancelScheduledPersist();
+		await writeIndex(index);
+	}
+
+	function scheduleIndexPersist(index: TerrainCacheIndex): void {
+		memoryIndexCache = index;
+		pendingUsagePersist = true;
+		if (scheduledPersistTimer != null) {
+			return;
+		}
+
+		scheduledPersistTimer = setTimeout(() => {
+			scheduledPersistTimer = null;
+			if (!pendingUsagePersist || !memoryIndexCache) {
+				return;
+			}
+
+			pendingUsagePersist = false;
+			void writeIndex(memoryIndexCache).catch((error) => {
+				console.warn(
+					"Unable to persist terrain cache index usage data.",
+					error,
+				);
+			});
+		}, INDEX_WRITE_DEBOUNCE_MS);
+	}
+
 	async function resetIndex(): Promise<TerrainCacheIndex> {
+		cancelScheduledPersist();
 		if (await space.fileExists(config.indexPath)) {
 			await space.deleteFile(config.indexPath);
 		}
@@ -263,7 +303,7 @@ function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
 				const decoded = config.decode(bytes);
 				config.memoryCache.set(key, decoded);
 				entry.lastUsed = Date.now();
-				await persistIndex(index);
+				scheduleIndexPersist(index);
 				return decoded;
 			} catch (error) {
 				config.onDecodeError?.(key, error);
@@ -299,6 +339,7 @@ function createCacheStore<T>(config: CacheStoreConfig<T>): CacheStore<T> {
 			await persistIndex(index);
 		},
 		async clear(): Promise<number> {
+			cancelScheduledPersist();
 			const index = await loadIndex();
 			const entries = Object.values(index.entries);
 			for (const entry of entries) {

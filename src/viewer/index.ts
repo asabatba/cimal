@@ -40,5 +40,7 @@ if ("message" in payload) {
     </div>
   `;
 } else {
-	await renderTerrainViewer(app, payload, activeTheme);
+	const cleanup = await renderTerrainViewer(app, payload, activeTheme);
+	window.addEventListener("pagehide", cleanup, { once: true });
+	window.addEventListener("beforeunload", cleanup, { once: true });
 }

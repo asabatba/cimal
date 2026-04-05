@@ -11,6 +11,11 @@ type KeyboardControlsOptions = {
 	maxCameraDistance: number;
 };
 
+export type BoundKeyboardControls = {
+	applyKeyboardMotion(deltaSeconds: number): void;
+	destroy(): void;
+};
+
 export function bindKeyboardControls({
 	THREE,
 	camera,
@@ -19,15 +24,14 @@ export function bindKeyboardControls({
 	sceneSpan,
 	minCameraDistance,
 	maxCameraDistance,
-}: KeyboardControlsOptions): {
-	applyKeyboardMotion(deltaSeconds: number): void;
-} {
+}: KeyboardControlsOptions): BoundKeyboardControls {
 	const pressedKeys = new Set<string>();
 	const keyboardVector = new THREE.Vector3();
 	const orbitOffset = new THREE.Vector3();
 	const orbitForward = new THREE.Vector3();
 	const orbitRight = new THREE.Vector3();
 	const orbitSpherical = new THREE.Spherical();
+	const handlePointerDown = () => canvas.focus();
 
 	function isKeyboardAction(code: string): boolean {
 		return (
@@ -73,7 +77,7 @@ export function bindKeyboardControls({
 		}
 	}
 
-	canvas.addEventListener("pointerdown", () => canvas.focus());
+	canvas.addEventListener("pointerdown", handlePointerDown);
 	canvas.addEventListener("keydown", handleKeyboardDown);
 	canvas.addEventListener("keyup", handleKeyboardUp);
 	canvas.addEventListener("blur", clearPressedKeys);
@@ -196,6 +200,14 @@ export function bindKeyboardControls({
 			if (changed) {
 				camera.updateMatrixWorld();
 			}
+		},
+		destroy(): void {
+			clearPressedKeys();
+			canvas.removeEventListener("pointerdown", handlePointerDown);
+			canvas.removeEventListener("keydown", handleKeyboardDown);
+			canvas.removeEventListener("keyup", handleKeyboardUp);
+			canvas.removeEventListener("blur", clearPressedKeys);
+			window.removeEventListener("blur", clearPressedKeys);
 		},
 	};
 }

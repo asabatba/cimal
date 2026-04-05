@@ -1,5 +1,3 @@
-import type { GeoBounds } from "./types.ts";
-
 export const GPX_WIDGET_LANGUAGE = "cimal";
 export const COPERNICUS_S3_ROOT = "s3://copernicus-dem-30m/";
 export const COPERNICUS_HTTP_ROOT =
@@ -8,7 +6,6 @@ export const COPERNICUS_RESOLUTION_ARC_SECONDS = 10;
 
 export const MAX_GRID_CELLS = 160;
 export const MIN_GRID_CELLS = 72;
-export const MAX_TRACK_POINTS = 1200;
 export const MIN_PADDING_METERS = 900;
 export const MAX_PADDING_METERS = 5000;
 export const MAX_COPERNICUS_TILES = 16;
@@ -28,10 +25,3 @@ export const CIMAL_PACK_CACHE_VERSION = 4;
 export const CIMAL_PACK_CACHE_ROOT = `${TERRAIN_CACHE_ROOT}/packs`;
 export const CIMAL_PACK_CACHE_INDEX_PATH = `${CIMAL_PACK_CACHE_ROOT}/v${CIMAL_PACK_CACHE_VERSION}/index.json`;
 export const CIMAL_PACK_CACHE_MAX_BYTES = 100 * 1024 * 1024;
-
-export const DEFAULT_BOUNDS: GeoBounds = {
-	minLat: 0,
-	maxLat: 0,
-	minLon: 0,
-	maxLon: 0,
-};

@@ -8,10 +8,10 @@ export function escapeText(value: string): string {
 
 export function requireElement<T extends Element>(
 	id: string,
-	constructor: { new (): T },
+	elementType: { new (): T },
 ): T {
 	const element = document.getElementById(id);
-	if (!(element instanceof constructor)) {
+	if (!(element instanceof elementType)) {
 		throw new Error(`Missing required element #${id}.`);
 	}
 	return element;

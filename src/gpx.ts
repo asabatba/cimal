@@ -1,9 +1,10 @@
 import { space } from "@silverbulletmd/silverbullet/syscalls";
 import { XMLParser } from "fast-xml-parser";
-import { computeBounds, computeDistanceMeters } from "./math.ts";
+import { computeBounds } from "./math.ts";
+import { computeTrackMetrics } from "./trackMetrics.ts";
 import type { GeoPoint, TrackData } from "./types.ts";
 
-type XmlNode = Record<string, any>;
+type XmlNode = Record<string, unknown>;
 
 const parser = new XMLParser({
 	attributeNamePrefix: "",
@@ -90,32 +91,15 @@ export function parseTrackData(gpxSource: string, xml: string): TrackData {
 	}
 
 	const bounds = computeBounds(points);
-	let distanceMeters = 0;
-	let totalAscent = 0;
-	let totalDescent = 0;
-
-	for (let index = 1; index < points.length; index += 1) {
-		const previous = points[index - 1];
-		const current = points[index];
-		distanceMeters += computeDistanceMeters(previous, current);
-
-		if (previous.ele != null && current.ele != null) {
-			const delta = current.ele - previous.ele;
-			if (delta > 0) {
-				totalAscent += delta;
-			} else {
-				totalDescent += Math.abs(delta);
-			}
-		}
-	}
+	const metrics = computeTrackMetrics(points, (point) => point.ele);
 
 	return {
 		sourceUrl: gpxSource,
 		points,
 		bounds,
-		distanceMeters,
-		totalAscent,
-		totalDescent,
+		distanceMeters: metrics.distanceMeters,
+		totalAscent: metrics.totalAscent,
+		totalDescent: metrics.totalDescent,
 	};
 }
 

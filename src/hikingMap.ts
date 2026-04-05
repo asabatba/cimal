@@ -33,6 +33,14 @@ type TileCoverage = {
 	tileCount: number;
 };
 
+type CoverageTile = {
+	tileX: number;
+	tileY: number;
+	wrappedX: number;
+	clampedY: number;
+	url: string;
+};
+
 type RasterCanvas = HTMLCanvasElement | OffscreenCanvas;
 type RasterContext =
 	| CanvasRenderingContext2D
@@ -87,7 +95,17 @@ const MIN_TILE_ZOOM = 6;
 const MAX_BROWSER_CANVAS_DIMENSION = 16384;
 const EMBEDDED_TEXTURE_MAX_DATA_URL_LENGTH = 1_200_000;
 const EMBEDDED_TEXTURE_MIN_DIMENSION = 512;
+const TILE_LOAD_CONCURRENCY = 6;
 const WEBP_QUALITY = 0.82;
+
+function getTexturePreset(
+	resolution: HikingMapResolution,
+): HikingMapTexturePreset {
+	return (
+		HIKING_MAP_TEXTURE_PRESETS[resolution] ??
+		HIKING_MAP_TEXTURE_PRESETS.standard
+	);
+}
 
 function hasDomCanvasSupport(): boolean {
 	return (
@@ -168,11 +186,8 @@ function coverageFitsBudget(
 
 function pickTileCoverage(
 	targetBounds: GeoBounds,
-	resolution: HikingMapResolution,
+	preset: HikingMapTexturePreset,
 ): TileCoverage {
-	const preset =
-		HIKING_MAP_TEXTURE_PRESETS[resolution] ??
-		HIKING_MAP_TEXTURE_PRESETS.standard;
 	let fallback = buildTileCoverage(targetBounds, MIN_TILE_ZOOM);
 
 	for (let zoom = preset.initialZoom; zoom >= MIN_TILE_ZOOM; zoom -= 1) {
@@ -327,14 +342,13 @@ async function encodeEmbeddedTexture(
 			};
 		}
 
-		const nextScale = 0.75;
 		const nextWidth = Math.max(
 			EMBEDDED_TEXTURE_MIN_DIMENSION,
-			Math.round(currentCanvas.width * nextScale),
+			Math.round(currentCanvas.width * 0.75),
 		);
 		const nextHeight = Math.max(
 			EMBEDDED_TEXTURE_MIN_DIMENSION,
-			Math.round(currentCanvas.height * nextScale),
+			Math.round(currentCanvas.height * 0.75),
 		);
 		if (
 			nextWidth === currentCanvas.width &&
@@ -352,31 +366,10 @@ async function encodeEmbeddedTexture(
 	}
 }
 
-export async function bakeHikingMapTexture(
-	bounds: GeoBounds,
-	resolution: HikingMapResolution,
-): Promise<BakedHikingMapTexture | null> {
-	if (!hasRasterSupport()) {
-		return null;
-	}
-
-	const preset =
-		HIKING_MAP_TEXTURE_PRESETS[resolution] ??
-		HIKING_MAP_TEXTURE_PRESETS.standard;
-	const coverage = pickTileCoverage(bounds, resolution);
+function buildCoverageTiles(coverage: TileCoverage): CoverageTile[] {
 	const worldTileCount = 2 ** coverage.zoom;
-	const stitchedCanvas = createRasterCanvas(
-		coverage.tileColumns * TILE_SIZE,
-		coverage.tileRows * TILE_SIZE,
-	);
-	const stitchedContext = getRasterContext(stitchedCanvas);
-	if (!stitchedContext) {
-		return null;
-	}
+	const tiles: CoverageTile[] = [];
 
-	const tileRequests: Array<
-		Promise<{ image: RasterImage; tileX: number; tileY: number }>
-	> = [];
 	for (
 		let tileY = coverage.tileYStart;
 		tileY <= coverage.tileYEnd;
@@ -390,22 +383,71 @@ export async function bakeHikingMapTexture(
 			const wrappedX =
 				((tileX % worldTileCount) + worldTileCount) % worldTileCount;
 			const clampedY = Math.max(0, Math.min(worldTileCount - 1, tileY));
-			const url = OPEN_HIKING_TILE_URL.replace("{z}", String(coverage.zoom))
-				.replace("{x}", String(wrappedX))
-				.replace("{y}", String(clampedY));
-			tileRequests.push(
-				loadCachedTileImage(coverage.zoom, wrappedX, clampedY, url).then(
-					(image) => ({
-						image,
-						tileX,
-						tileY,
-					}),
-				),
-			);
+			tiles.push({
+				tileX,
+				tileY,
+				wrappedX,
+				clampedY,
+				url: OPEN_HIKING_TILE_URL.replace("{z}", String(coverage.zoom))
+					.replace("{x}", String(wrappedX))
+					.replace("{y}", String(clampedY)),
+			});
 		}
 	}
 
-	const tiles = await Promise.all(tileRequests);
+	return tiles;
+}
+
+async function runWithConcurrencyLimit<T>(
+	tasks: Array<() => Promise<T>>,
+	concurrency: number,
+): Promise<T[]> {
+	const results = new Array<T>(tasks.length);
+	let nextTaskIndex = 0;
+
+	async function worker(): Promise<void> {
+		while (nextTaskIndex < tasks.length) {
+			const taskIndex = nextTaskIndex;
+			nextTaskIndex += 1;
+			results[taskIndex] = await tasks[taskIndex]();
+		}
+	}
+
+	const workerCount = Math.max(1, Math.min(concurrency, tasks.length));
+	await Promise.all(Array.from({ length: workerCount }, () => worker()));
+	return results;
+}
+
+async function loadCoverageTiles(
+	coverage: TileCoverage,
+): Promise<Array<{ image: RasterImage; tileX: number; tileY: number }>> {
+	const tasks = buildCoverageTiles(coverage).map((tile) => async () => ({
+		image: await loadCachedTileImage(
+			coverage.zoom,
+			tile.wrappedX,
+			tile.clampedY,
+			tile.url,
+		),
+		tileX: tile.tileX,
+		tileY: tile.tileY,
+	}));
+
+	return runWithConcurrencyLimit(tasks, TILE_LOAD_CONCURRENCY);
+}
+
+function stitchCoverageTiles(
+	coverage: TileCoverage,
+	tiles: Array<{ image: RasterImage; tileX: number; tileY: number }>,
+): RasterCanvas | null {
+	const stitchedCanvas = createRasterCanvas(
+		coverage.tileColumns * TILE_SIZE,
+		coverage.tileRows * TILE_SIZE,
+	);
+	const stitchedContext = getRasterContext(stitchedCanvas);
+	if (!stitchedContext) {
+		return null;
+	}
+
 	for (const tile of tiles) {
 		stitchedContext.drawImage(
 			tile.image,
@@ -416,6 +458,14 @@ export async function bakeHikingMapTexture(
 		);
 	}
 
+	return stitchedCanvas;
+}
+
+function cropCoverageTexture(
+	stitchedCanvas: RasterCanvas,
+	coverage: TileCoverage,
+	preset: HikingMapTexturePreset,
+): RasterCanvas | null {
 	const cropLeft = (coverage.west - coverage.tileXStart) * TILE_SIZE;
 	const cropTop = (coverage.north - coverage.tileYStart) * TILE_SIZE;
 	const cropWidth = Math.max(1, (coverage.east - coverage.west) * TILE_SIZE);
@@ -444,6 +494,30 @@ export async function bakeHikingMapTexture(
 		outputCanvas.width,
 		outputCanvas.height,
 	);
+
+	return outputCanvas;
+}
+
+export async function bakeHikingMapTexture(
+	bounds: GeoBounds,
+	resolution: HikingMapResolution,
+): Promise<BakedHikingMapTexture | null> {
+	if (!hasRasterSupport()) {
+		return null;
+	}
+
+	const preset = getTexturePreset(resolution);
+	const coverage = pickTileCoverage(bounds, preset);
+	const tiles = await loadCoverageTiles(coverage);
+	const stitchedCanvas = stitchCoverageTiles(coverage, tiles);
+	if (!stitchedCanvas) {
+		return null;
+	}
+
+	const outputCanvas = cropCoverageTexture(stitchedCanvas, coverage, preset);
+	if (!outputCanvas) {
+		return null;
+	}
 
 	const encodedTexture = await encodeEmbeddedTexture(outputCanvas);
 	return {
