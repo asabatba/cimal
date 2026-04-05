@@ -3,18 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build:geodata": "node scripts/build-geodata.mjs",
     "build:viewer": "node scripts/build-viewer.mjs",
     "build": "pnpm run build:viewer && npx plug-compile cimal.plug.yaml",
     "format": "biome check --write src"
   },
   "dependencies": {
     "@silverbulletmd/silverbullet": "^2.5.3",
-    "fast-xml-parser": "^5.5.9",
+    "fast-xml-parser": "^5.5.10",
     "geotiff": "^3.0.5",
+    "shpjs": "^6.2.0",
     "three": "^0.183.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
-    "esbuild": "^0.27.7"
+    "esbuild": "^0.28.0"
   }
 }
