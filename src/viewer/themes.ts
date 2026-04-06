@@ -1,4 +1,4 @@
-import type { BakedImageryKind, ViewerStyle } from "../types.ts";
+import type { BakedImageryKind, TerrainShape, ViewerStyle } from "../types.ts";
 
 type ColorStop = { t: number; color: number };
 
@@ -65,6 +65,7 @@ export type ViewerTheme = {
 	cssVars: Record<string, string>;
 	styleDescription: string;
 	imageryKind?: BakedImageryKind;
+	defaultTerrainShape?: TerrainShape;
 	useWaterTint: boolean;
 	fogColor: number;
 	hemisphereSky: number;
@@ -199,6 +200,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#9db0bb",
 		},
 		styleDescription: "Style: Classic relief tint.",
+		defaultTerrainShape: "smooth",
 		useWaterTint: true,
 		fogColor: 0x102029,
 		hemisphereSky: 0xdaf2ff,
@@ -225,6 +227,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		},
 		styleDescription: "Imagery: baked OpenHikingMap texture.",
 		imageryKind: "hiking-map",
+		defaultTerrainShape: "smooth",
 		useWaterTint: false,
 		fogColor: 0x112326,
 		hemisphereSky: 0xe0f0f6,
@@ -269,6 +272,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 		},
 		styleDescription: "Imagery: baked ESA WorldCover texture.",
 		imageryKind: "worldcover",
+		defaultTerrainShape: "triangular",
 		useWaterTint: false,
 		fogColor: 0x141b1b,
 		hemisphereSky: 0xe6f1ef,
@@ -312,6 +316,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#d3a9ea",
 		},
 		styleDescription: "Style: Vaporwave flavour.",
+		defaultTerrainShape: "triangular",
 		useWaterTint: true,
 		fogColor: 0x1b0b2f,
 		hemisphereSky: 0x8acfff,
@@ -397,6 +402,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#d6a48d",
 		},
 		styleDescription: "Style: Volcanic lava glow.",
+		defaultTerrainShape: "triangular",
 		useWaterTint: true,
 		fogColor: 0x230904,
 		hemisphereSky: 0xffb36b,
@@ -483,6 +489,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#9fcfdb",
 		},
 		styleDescription: "Style: Oceanic blue world.",
+		defaultTerrainShape: "smooth",
 		useWaterTint: true,
 		fogColor: 0x0a2232,
 		hemisphereSky: 0xb7edff,
@@ -569,6 +576,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#bd93f9",
 		},
 		styleDescription: "Style: Dracula nightscape.",
+		defaultTerrainShape: "triangular",
 		useWaterTint: true,
 		fogColor: 0x171227,
 		hemisphereSky: 0xb799ff,
@@ -654,6 +662,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#8a7b93",
 		},
 		styleDescription: "Style: Soft pastel atlas.",
+		defaultTerrainShape: "smooth",
 		useWaterTint: true,
 		fogColor: 0xd9e9f4,
 		hemisphereSky: 0xfffbff,
@@ -740,6 +749,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#c3d0ff",
 		},
 		styleDescription: "Style: Rainbow spectrum terrain.",
+		defaultTerrainShape: "triangular",
 		useWaterTint: true,
 		fogColor: 0x181a39,
 		hemisphereSky: 0xa4e8ff,

@@ -12,6 +12,7 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Bakes OpenHikingMap imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: hiking-map` is selected.
 - Bakes ESA WorldCover 2021 v200 land-cover imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: worldcover` is selected.
 - Supports hiking-map imagery presets: `low`, `standard`, `high`, and `ultra`.
+- Supports per-widget terrain shapes: `smooth` and `triangular`.
 - Falls back to classic elevation-based terrain shading when a pack has no baked hiking-map imagery.
 - Highlights likely water bodies in blue in the non-hiking-map shaded styles using DEM-based detection.
 - Renders the route as an interactive Three.js scene with orbit controls.
@@ -48,12 +49,13 @@ style: hiking-map
 ```
 ````
 
-Or use a prebuilt pack with the baked ESA WorldCover texture:
+Or use a prebuilt pack with the baked ESA WorldCover texture. This style now defaults to faceted terrain unless you override it:
 
 ````markdown
 ```cimal
 Library/Cimal/track.cimal
 style: worldcover
+terrain-shape: triangular
 ```
 ````
 
@@ -78,9 +80,11 @@ style: dracula
 
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
-The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add an optional `style: classic|hiking-map|worldcover|vaporwave|lava|water-world|dracula|pastel|rainbow` line below it to choose the look per widget instance. If you omit the style, Cimal defaults to `classic`.
+The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add optional `style: classic|hiking-map|worldcover|vaporwave|lava|water-world|dracula|pastel|rainbow` and `terrain-shape: smooth|triangular` lines below it to choose the look per widget instance. If you omit them, Cimal defaults to `style: classic` and then applies the selected theme's default terrain shape. If the theme does not specify one, `terrain-shape: smooth` is used.
 
 When the widget body points at a GPX source and `style: hiking-map` is active, you can also add `hiking-map-resolution: low|standard|high|ultra`. That resolution is baked into the generated `.cimal` pack and cached separately per preset. Higher presets use more network requests and produce larger embedded textures.
+
+`terrain-shape: triangular` changes only the viewer rendering. It keeps the same DEM grid and imagery UV mapping, but renders the top surface as faceted, non-smoothed triangles. An explicit `terrain-shape` in the widget always overrides any theme default.
 
 When the widget body points at an existing `.cimal` pack, `hiking-map-resolution` is not valid because the baked imagery is already fixed in the pack. Rebuild the pack from the GPX at the desired preset instead.
 

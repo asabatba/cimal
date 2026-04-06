@@ -11,13 +11,22 @@ const app = requireElement("app", HTMLDivElement);
 const payload = JSON.parse(payloadScript.textContent ?? "null") as
 	| ErrorPayload
 	| TerrainPayload;
-const viewerConfig = {
-	...DEFAULT_VIEWER_CONFIG,
+const rawViewerConfig = {
 	...(JSON.parse(
 		viewerConfigScript.textContent ?? JSON.stringify(DEFAULT_VIEWER_CONFIG),
 	) as Partial<ViewerConfig>),
+};
+const activeTheme =
+	styleThemes[rawViewerConfig.style ?? DEFAULT_VIEWER_CONFIG.style] ??
+	styleThemes.classic;
+const viewerConfig = {
+	...DEFAULT_VIEWER_CONFIG,
+	...rawViewerConfig,
+	terrainShape:
+		rawViewerConfig.terrainShape ??
+		activeTheme.defaultTerrainShape ??
+		DEFAULT_VIEWER_CONFIG.terrainShape,
 } satisfies ViewerConfig;
-const activeTheme = styleThemes[viewerConfig.style] ?? styleThemes.classic;
 
 for (const [name, value] of Object.entries(activeTheme.cssVars)) {
 	document.documentElement.style.setProperty(name, value);
@@ -40,7 +49,12 @@ if ("message" in payload) {
     </div>
   `;
 } else {
-	const cleanup = await renderTerrainViewer(app, payload, activeTheme);
+	const cleanup = await renderTerrainViewer(
+		app,
+		payload,
+		activeTheme,
+		viewerConfig,
+	);
 	window.addEventListener("pagehide", cleanup, { once: true });
 	window.addEventListener("beforeunload", cleanup, { once: true });
 }

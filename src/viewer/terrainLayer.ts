@@ -1,5 +1,5 @@
 import type * as ThreeType from "three";
-import type { TerrainPayload } from "../types.ts";
+import type { TerrainPayload, TerrainShape } from "../types.ts";
 import { resolveColorStops, sampleGradient } from "./colors.ts";
 import { buildTerrainSideGeometry } from "./geometry.ts";
 import type { ViewerTheme } from "./themes.ts";
@@ -143,10 +143,11 @@ export function createTerrainLayer(
 		spanZ: number;
 		sceneSpan: number;
 		elevationRange: number;
+		terrainShape: TerrainShape;
 	},
 ): TerrainLayer {
 	const { grid } = payload;
-	const { spanX, spanZ, sceneSpan, elevationRange } = options;
+	const { spanX, spanZ, sceneSpan, elevationRange, terrainShape } = options;
 	const appearanceForNormal = createTerrainAppearanceSampler(
 		THREE,
 		activeTheme,
@@ -159,8 +160,6 @@ export function createTerrainLayer(
 	const geometry = new THREE.BufferGeometry();
 	const vertexCount = grid.width * grid.height;
 	const positions = new Float32Array(vertexCount * 3);
-	const terrainColors = new Float32Array(vertexCount * 3);
-	const hikingTextureBlendColors = new Float32Array(vertexCount * 3);
 	const uvs = new Float32Array(vertexCount * 2);
 	const indices: number[] = [];
 	const waterMask = detectWaterMask(
@@ -216,41 +215,65 @@ export function createTerrainLayer(
 	geometry.setIndex(indices);
 	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 	geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
-	geometry.computeVertexNormals();
+	const topGeometry =
+		terrainShape === "triangular" ? geometry.toNonIndexed() : geometry;
+	topGeometry.computeVertexNormals();
 
-	const normals = geometry.getAttribute("normal");
-	for (let index = 0; index < vertexCount; index += 1) {
+	const topPositions = topGeometry.getAttribute(
+		"position",
+	) as ThreeType.BufferAttribute;
+	const topUvs = topGeometry.getAttribute("uv") as ThreeType.BufferAttribute;
+	const topNormals = topGeometry.getAttribute(
+		"normal",
+	) as ThreeType.BufferAttribute;
+	const topVertexCount = topPositions.count;
+	const topTerrainColors = new Float32Array(topVertexCount * 3);
+	const topImageryBlendColors = new Float32Array(topVertexCount * 3);
+	for (let index = 0; index < topVertexCount; index += 1) {
 		const colorPointer = index * 3;
-		const elevation = grid.elevations[index];
+		const u = topUvs.getX(index);
+		const v = topUvs.getY(index);
+		const column = THREE.MathUtils.clamp(
+			Math.round(u * (grid.width - 1)),
+			0,
+			Math.max(0, grid.width - 1),
+		);
+		const row = THREE.MathUtils.clamp(
+			Math.round((1 - v) * (grid.height - 1)),
+			0,
+			Math.max(0, grid.height - 1),
+		);
+		const elevation = grid.elevations[row * grid.width + column];
 		const normalized = (elevation - grid.minElevation) / elevationRange;
 		const appearance = appearanceForNormal(
 			normalized,
-			normals.getY(index),
-			normals.getX(index),
-			normals.getZ(index),
+			topNormals.getY(index),
+			topNormals.getX(index),
+			topNormals.getZ(index),
 		);
 
-		terrainColors[colorPointer] = appearance.color.r;
-		terrainColors[colorPointer + 1] = appearance.color.g;
-		terrainColors[colorPointer + 2] = appearance.color.b;
-		hikingTextureBlendColors[colorPointer] = appearance.reliefShade;
-		hikingTextureBlendColors[colorPointer + 1] = appearance.reliefShade;
-		hikingTextureBlendColors[colorPointer + 2] = appearance.reliefShade;
+		topTerrainColors[colorPointer] = appearance.color.r;
+		topTerrainColors[colorPointer + 1] = appearance.color.g;
+		topTerrainColors[colorPointer + 2] = appearance.color.b;
+		topImageryBlendColors[colorPointer] = appearance.reliefShade;
+		topImageryBlendColors[colorPointer + 1] = appearance.reliefShade;
+		topImageryBlendColors[colorPointer + 2] = appearance.reliefShade;
 	}
 
-	const terrainColorAttribute = new THREE.BufferAttribute(terrainColors, 3);
+	const terrainColorAttribute = new THREE.BufferAttribute(topTerrainColors, 3);
 	const hikingBlendAttribute = new THREE.BufferAttribute(
-		hikingTextureBlendColors,
+		topImageryBlendColors,
 		3,
 	);
-	geometry.setAttribute("color", terrainColorAttribute);
+	topGeometry.setAttribute("color", terrainColorAttribute);
 
 	const terrainMaterial = new THREE.MeshStandardMaterial({
 		vertexColors: true,
+		flatShading: terrainShape === "triangular",
 		roughness: activeTheme.terrain.roughness,
 		metalness: activeTheme.terrain.metalness,
 	});
-	const terrain = new THREE.Mesh(geometry, terrainMaterial);
+	const terrain = new THREE.Mesh(topGeometry, terrainMaterial);
 
 	const terrainDepth = Math.max(90, elevationRange * 0.42, sceneSpan * 0.08);
 	const terrainBottomY = -terrainDepth;
@@ -365,8 +388,8 @@ export function createTerrainLayer(
 		) as ThreeType.Object3D[],
 		waterMaterial,
 		applyBakedTexture(texture) {
-			geometry.setAttribute("color", hikingBlendAttribute);
-			geometry.attributes.color.needsUpdate = true;
+			topGeometry.setAttribute("color", hikingBlendAttribute);
+			topGeometry.attributes.color.needsUpdate = true;
 			terrainMaterial.map = texture;
 			terrainMaterial.needsUpdate = true;
 		},
@@ -374,6 +397,9 @@ export function createTerrainLayer(
 			waterGeometry?.dispose();
 			waterMaterial?.dispose();
 			geometry.dispose();
+			if (topGeometry !== geometry) {
+				topGeometry.dispose();
+			}
 			sideGeometry.dispose();
 			bottomGeometry.dispose();
 			terrainMaterial.dispose();

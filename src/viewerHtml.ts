@@ -60,12 +60,11 @@ function normalizePayloadForEmbedding(
 
 export function buildViewerDataUrl(
 	payload: ErrorPayload | TerrainPayload,
-	viewerConfig: ViewerConfig | ViewerStyle = DEFAULT_VIEWER_CONFIG,
+	viewerConfig: Partial<ViewerConfig> | ViewerStyle = DEFAULT_VIEWER_CONFIG,
 ): string {
-	const normalizedViewerConfig: ViewerConfig =
+	const normalizedViewerConfig: Partial<ViewerConfig> =
 		typeof viewerConfig === "string"
 			? {
-					...DEFAULT_VIEWER_CONFIG,
 					style: viewerConfig,
 				}
 			: {
@@ -73,6 +72,9 @@ export function buildViewerDataUrl(
 					hikingMapResolution:
 						viewerConfig.hikingMapResolution ??
 						DEFAULT_VIEWER_CONFIG.hikingMapResolution,
+					...(viewerConfig.terrainShape
+						? { terrainShape: viewerConfig.terrainShape }
+						: {}),
 				};
 
 	const html = replacePlaceholder(

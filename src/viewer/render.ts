@@ -1,7 +1,7 @@
 import type * as ThreeType from "three";
 import { THREE_JS_VERSION } from "../constants.ts";
 import { OPEN_HIKING_ATTRIBUTION, OPEN_HIKING_FALLBACK } from "../hikingMap.ts";
-import type { BakedImagery, TerrainPayload } from "../types.ts";
+import type { BakedImagery, TerrainPayload, ViewerConfig } from "../types.ts";
 import { WORLDCOVER_ATTRIBUTION, WORLDCOVER_FALLBACK } from "../worldcover.ts";
 import { bindKeyboardControls } from "./controls.ts";
 import { escapeText } from "./dom.ts";
@@ -15,6 +15,7 @@ export async function renderTerrainViewer(
 	app: HTMLDivElement,
 	payload: TerrainPayload,
 	activeTheme: ViewerTheme,
+	viewerConfig: ViewerConfig,
 ): Promise<() => void> {
 	const [THREE, { OrbitControls }] = await Promise.all([
 		import(`https://esm.sh/three@${THREE_JS_VERSION}`),
@@ -92,6 +93,7 @@ export async function renderTerrainViewer(
 		spanZ,
 		sceneSpan,
 		elevationRange,
+		terrainShape: viewerConfig.terrainShape,
 	});
 	const trackLayer = createTrackLayer(THREE, payload, activeTheme, {
 		spanX,

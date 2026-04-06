@@ -1,12 +1,15 @@
 import type {
 	HikingMapResolution,
 	ParsedWidgetConfig,
+	TerrainShape,
 	ViewerStyle,
 } from "./types.ts";
 import {
 	DEFAULT_HIKING_MAP_RESOLUTION,
+	DEFAULT_TERRAIN_SHAPE,
 	DEFAULT_VIEWER_STYLE,
 	SUPPORTED_HIKING_MAP_RESOLUTIONS,
+	SUPPORTED_TERRAIN_SHAPES,
 	SUPPORTED_VIEWER_STYLES,
 } from "./viewerConfig.ts";
 
@@ -23,7 +26,7 @@ function formatSupportedList(values: readonly string[]): string {
 }
 
 function supportedWidgetOptionsHelpText(): string {
-	return `style: ${formatSupportedValues(SUPPORTED_VIEWER_STYLES)} and optional hiking-map-resolution: ${formatSupportedValues(SUPPORTED_HIKING_MAP_RESOLUTIONS)}`;
+	return `style: ${formatSupportedValues(SUPPORTED_VIEWER_STYLES)}, terrain-shape: ${formatSupportedValues(SUPPORTED_TERRAIN_SHAPES)}, and optional hiking-map-resolution: ${formatSupportedValues(SUPPORTED_HIKING_MAP_RESOLUTIONS)}`;
 }
 
 function isRemoteUrl(candidate: string): boolean {
@@ -103,6 +106,17 @@ export function normalizeHikingMapResolution(
 	);
 }
 
+export function normalizeTerrainShape(input: string): TerrainShape {
+	const normalized = input.trim().toLowerCase();
+	if (SUPPORTED_TERRAIN_SHAPES.includes(normalized as TerrainShape)) {
+		return normalized as TerrainShape;
+	}
+
+	throw new Error(
+		`Unsupported terrain-shape "${input.trim()}". Supported values: ${formatSupportedList(SUPPORTED_TERRAIN_SHAPES)}.`,
+	);
+}
+
 export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	const meaningfulLines = bodyText
 		.split(/\r?\n/)
@@ -116,7 +130,7 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	}
 
 	const [sourceLine, ...optionLines] = meaningfulLines;
-	if (/^(?:style|hiking-map-resolution)\s*:/i.test(sourceLine)) {
+	if (/^(?:style|terrain-shape|hiking-map-resolution)\s*:/i.test(sourceLine)) {
 		throw new Error(
 			`Put the .cimal path or GPX source on the first line, then add ${supportedWidgetOptionsHelpText()} below it.`,
 		);
@@ -124,8 +138,10 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 
 	let style = DEFAULT_VIEWER_STYLE;
 	let hikingMapResolution = DEFAULT_HIKING_MAP_RESOLUTION;
+	let terrainShape = DEFAULT_TERRAIN_SHAPE;
 	let sawStyle = false;
 	let sawHikingMapResolution = false;
+	let sawTerrainShape = false;
 	for (const line of optionLines) {
 		const styleMatch = /^style\s*:\s*(.+)$/i.exec(line);
 		if (styleMatch) {
@@ -134,6 +150,16 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 			}
 			style = normalizeViewerStyle(styleMatch[1]);
 			sawStyle = true;
+			continue;
+		}
+
+		const terrainShapeMatch = /^terrain-shape\s*:\s*(.+)$/i.exec(line);
+		if (terrainShapeMatch) {
+			if (sawTerrainShape) {
+				throw new Error("Duplicate terrain-shape option in cimal widget body.");
+			}
+			terrainShape = normalizeTerrainShape(terrainShapeMatch[1]);
+			sawTerrainShape = true;
 			continue;
 		}
 
@@ -168,7 +194,9 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 		source: sourceLine,
 		style,
 		hikingMapResolution,
+		terrainShape,
 		hasExplicitHikingMapResolution: sawHikingMapResolution,
+		hasExplicitTerrainShape: sawTerrainShape,
 	};
 }
 

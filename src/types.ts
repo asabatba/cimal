@@ -85,15 +85,18 @@ export type ViewerStyle =
 	| "pastel"
 	| "rainbow";
 export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
+export type TerrainShape = "smooth" | "triangular";
 
 export type ViewerConfig = {
 	style: ViewerStyle;
 	hikingMapResolution: HikingMapResolution;
+	terrainShape: TerrainShape;
 };
 
 export type ParsedWidgetConfig = ViewerConfig & {
 	source: string;
 	hasExplicitHikingMapResolution: boolean;
+	hasExplicitTerrainShape: boolean;
 };
 
 export type ErrorPayload = {

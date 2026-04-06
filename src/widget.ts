@@ -37,7 +37,7 @@ const ERROR_WIDGET_HEIGHT = 340;
 function buildWidgetErrorResult(
 	title: string,
 	message: string,
-	viewerConfig?: ViewerConfig,
+	viewerConfig?: Partial<ViewerConfig>,
 ): {
 	url: string;
 	width: number;
@@ -52,7 +52,7 @@ function buildWidgetErrorResult(
 
 function buildWidgetSuccessResult(
 	payload: TerrainPayload,
-	viewerConfig: ViewerConfig,
+	viewerConfig: Partial<ViewerConfig>,
 ): {
 	url: string;
 	width: number;
@@ -67,7 +67,7 @@ function buildWidgetSuccessResult(
 
 async function renderPackWidget(
 	packPath: string,
-	viewerConfig: ViewerConfig,
+	viewerConfig: Partial<ViewerConfig>,
 ): Promise<{
 	url: string;
 	width: number;
@@ -119,7 +119,7 @@ async function loadOrBuildGpxPayload(
 
 async function renderGpxSourceWidget(
 	gpxSource: string,
-	viewerConfig: ViewerConfig,
+	viewerConfig: Partial<ViewerConfig>,
 ): Promise<{
 	url: string;
 	width: number;
@@ -149,8 +149,12 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 	const {
 		source: _source,
 		hasExplicitHikingMapResolution: _resolution,
+		hasExplicitTerrainShape,
 		...viewerConfig
 	} = widgetConfig;
+	const viewerConfigForEmbed = hasExplicitTerrainShape
+		? viewerConfig
+		: { ...viewerConfig, terrainShape: undefined };
 	let resolvedSource: ReturnType<typeof resolveWidgetSource>;
 	try {
 		resolvedSource = resolveWidgetSource(widgetConfig);
@@ -159,21 +163,27 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		return buildWidgetErrorResult(
 			"Cimal widget configuration error",
 			message,
-			viewerConfig,
+			viewerConfigForEmbed,
 		);
 	}
 
 	try {
 		if (resolvedSource.kind === "pack") {
-			return await renderPackWidget(resolvedSource.packPath, viewerConfig);
+			return await renderPackWidget(
+				resolvedSource.packPath,
+				viewerConfigForEmbed,
+			);
 		}
-		return await renderGpxSourceWidget(resolvedSource.gpxSource, viewerConfig);
+		return await renderGpxSourceWidget(
+			resolvedSource.gpxSource,
+			viewerConfigForEmbed,
+		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : "Unknown error";
 		const title =
 			resolvedSource.kind === "pack"
 				? "Cimal pack preview failed"
 				: "GPX terrain preview failed";
-		return buildWidgetErrorResult(title, message, viewerConfig);
+		return buildWidgetErrorResult(title, message, viewerConfigForEmbed);
 	}
 }
