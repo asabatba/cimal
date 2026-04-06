@@ -83,7 +83,8 @@ export type ViewerStyle =
 	| "water-world"
 	| "dracula"
 	| "pastel"
-	| "rainbow";
+	| "rainbow"
+	| "wireframe";
 export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
 export type TerrainShape = "smooth" | "triangular";
 export type WorldCoverProcessing = "raw" | "no-islands";

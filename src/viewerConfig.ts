@@ -20,6 +20,7 @@ export const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
 	"dracula",
 	"pastel",
 	"rainbow",
+	"wireframe",
 ];
 export const SUPPORTED_HIKING_MAP_RESOLUTIONS: HikingMapResolution[] = [
 	"low",

@@ -66,6 +66,7 @@ export type ViewerTheme = {
 	styleDescription: string;
 	imageryKind?: BakedImageryKind;
 	defaultTerrainShape?: TerrainShape;
+	wireframe?: boolean;
 	useWaterTint: boolean;
 	fogColor: number;
 	hemisphereSky: number;

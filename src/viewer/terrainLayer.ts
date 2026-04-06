@@ -360,7 +360,8 @@ export function createTerrainLayer(
 
 	const terrainMaterial = new THREE.MeshStandardMaterial({
 		vertexColors: true,
-		flatShading: terrainShape === "triangular",
+		wireframe: activeTheme.wireframe ?? false,
+		flatShading: !activeTheme.wireframe && terrainShape === "triangular",
 		roughness: activeTheme.terrain.roughness,
 		metalness: activeTheme.terrain.metalness,
 	});
