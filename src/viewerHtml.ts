@@ -72,6 +72,9 @@ export function buildViewerDataUrl(
 					hikingMapResolution:
 						viewerConfig.hikingMapResolution ??
 						DEFAULT_VIEWER_CONFIG.hikingMapResolution,
+					worldcoverProcessing:
+						viewerConfig.worldcoverProcessing ??
+						DEFAULT_VIEWER_CONFIG.worldcoverProcessing,
 					...(viewerConfig.terrainShape
 						? { terrainShape: viewerConfig.terrainShape }
 						: {}),

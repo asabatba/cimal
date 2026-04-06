@@ -19,6 +19,7 @@ import type {
 	TerrainCacheIndex,
 	TerrainCacheIndexEntry,
 	ViewerStyle,
+	WorldCoverProcessing,
 } from "./types.ts";
 
 const encoder = new TextEncoder();
@@ -542,12 +543,14 @@ export function buildCimalPackCacheKey(
 	xml: string,
 	style: ViewerStyle,
 	hikingMapResolution: HikingMapResolution,
+	worldcoverProcessing: WorldCoverProcessing,
 ): string {
 	return [
 		`v${CIMAL_PACK_CACHE_VERSION}`,
 		source,
 		style,
 		hikingMapResolution,
+		worldcoverProcessing,
 		djb2Hash(xml),
 	].join("|");
 }

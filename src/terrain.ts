@@ -27,8 +27,12 @@ import type {
 	LocalPoint,
 	TerrainPayload,
 	ViewerStyle,
+	WorldCoverProcessing,
 } from "./types.ts";
-import { DEFAULT_HIKING_MAP_RESOLUTION } from "./viewerConfig.ts";
+import {
+	DEFAULT_HIKING_MAP_RESOLUTION,
+	DEFAULT_WORLDCOVER_PROCESSING,
+} from "./viewerConfig.ts";
 import { bakeWorldCoverTexture } from "./worldcover.ts";
 
 const TRACK_RESAMPLE_SPACING_METERS = 50;
@@ -37,6 +41,7 @@ const TRACK_VISUAL_MARGIN_METERS = 180;
 type TerrainBuildOptions = {
 	style?: ViewerStyle;
 	hikingMapResolution?: HikingMapResolution;
+	worldcoverProcessing?: WorldCoverProcessing;
 };
 
 function padTrackBounds(bounds: GeoBounds, distanceMeters: number): GeoBounds {
@@ -260,6 +265,7 @@ export async function buildTerrainPayloadFromTrackData(
 					paddedBounds,
 					gridSize.width,
 					gridSize.height,
+					options.worldcoverProcessing ?? DEFAULT_WORLDCOVER_PROCESSING,
 				)) ?? undefined;
 		} catch (error) {
 			console.warn(

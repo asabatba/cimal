@@ -82,6 +82,7 @@ async function loadOrBuildGpxPayload(
 	gpxSource: string,
 	style: ViewerConfig["style"],
 	hikingMapResolution: ViewerConfig["hikingMapResolution"],
+	worldcoverProcessing: ViewerConfig["worldcoverProcessing"],
 ): Promise<TerrainPayload> {
 	const xml = await readGpxXml(gpxSource);
 	const cacheKey = buildCimalPackCacheKey(
@@ -89,6 +90,7 @@ async function loadOrBuildGpxPayload(
 		xml,
 		style,
 		hikingMapResolution,
+		worldcoverProcessing,
 	);
 	let packed = await getCachedPack(cacheKey);
 
@@ -107,6 +109,7 @@ async function loadOrBuildGpxPayload(
 	const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml, {
 		style,
 		hikingMapResolution,
+		worldcoverProcessing,
 	});
 	const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
 	await putCachedPack(
@@ -129,6 +132,7 @@ async function renderGpxSourceWidget(
 		gpxSource,
 		viewerConfig.style,
 		viewerConfig.hikingMapResolution,
+		viewerConfig.worldcoverProcessing,
 	);
 	return buildWidgetSuccessResult(payload, viewerConfig);
 }
@@ -150,6 +154,7 @@ export async function renderGpxTerrainWidget(bodyText: string): Promise<{
 		source: _source,
 		hasExplicitHikingMapResolution: _resolution,
 		hasExplicitTerrainShape,
+		hasExplicitWorldcoverProcessing: _worldcoverProcessing,
 		...viewerConfig
 	} = widgetConfig;
 	const viewerConfigForEmbed = hasExplicitTerrainShape

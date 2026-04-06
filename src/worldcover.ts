@@ -1,7 +1,7 @@
 import { fromUrl } from "geotiff";
 import { bytesToDataUrl } from "./dataUrl.ts";
 import { clamp, intersectBounds } from "./math.ts";
-import type { BakedImagery, GeoBounds } from "./types.ts";
+import type { BakedImagery, GeoBounds, WorldCoverProcessing } from "./types.ts";
 
 type WorldCoverTileIndex = {
 	southLat: number;
@@ -257,10 +257,156 @@ function colorizeClassCodes(
 	return image;
 }
 
+function computeIslandThreshold(width: number, height: number): number {
+	return clamp(Math.round((width * height) / 4096), 6, 24);
+}
+
+function countBoundaryNeighborClass(
+	classCodes: Uint8Array,
+	width: number,
+	height: number,
+	index: number,
+	componentClass: number,
+	boundaryCounts: Map<number, number>,
+): void {
+	const x = index % width;
+	const y = Math.floor(index / width);
+	const neighbors = [
+		x > 0 ? index - 1 : -1,
+		x + 1 < width ? index + 1 : -1,
+		y > 0 ? index - width : -1,
+		y + 1 < height ? index + width : -1,
+	];
+
+	for (const neighborIndex of neighbors) {
+		if (neighborIndex < 0) {
+			continue;
+		}
+		const neighborClass = classCodes[neighborIndex];
+		if (
+			neighborClass === componentClass ||
+			neighborClass === WORLDCOVER_FILL_CLASS
+		) {
+			continue;
+		}
+		boundaryCounts.set(
+			neighborClass,
+			(boundaryCounts.get(neighborClass) ?? 0) + 1,
+		);
+	}
+}
+
+function pickDominantBoundaryClass(
+	boundaryCounts: Map<number, number>,
+): number | null {
+	let replacementClass: number | null = null;
+	let replacementCount = -1;
+
+	for (const [classCode, count] of boundaryCounts.entries()) {
+		if (
+			count > replacementCount ||
+			(count === replacementCount &&
+				replacementClass != null &&
+				classCode < replacementClass)
+		) {
+			replacementClass = classCode;
+			replacementCount = count;
+		}
+	}
+
+	return replacementClass;
+}
+
+function removeSmallClassIslands(
+	classCodes: Uint8Array,
+	width: number,
+	height: number,
+): Uint8Array {
+	const filtered = classCodes.slice();
+	const maxComponentSize = computeIslandThreshold(width, height);
+	const visited = new Uint8Array(filtered.length);
+	const queue = new Int32Array(filtered.length);
+
+	for (let pass = 0; pass < 6; pass += 1) {
+		visited.fill(0);
+		let changedInPass = false;
+
+		for (let startIndex = 0; startIndex < filtered.length; startIndex += 1) {
+			const componentClass = filtered[startIndex];
+			if (visited[startIndex] || componentClass === WORLDCOVER_FILL_CLASS) {
+				continue;
+			}
+
+			let queueHead = 0;
+			let queueTail = 0;
+			queue[queueTail++] = startIndex;
+			visited[startIndex] = 1;
+
+			const componentIndices: number[] = [];
+			const boundaryCounts = new Map<number, number>();
+
+			while (queueHead < queueTail) {
+				const index = queue[queueHead++];
+				componentIndices.push(index);
+				countBoundaryNeighborClass(
+					filtered,
+					width,
+					height,
+					index,
+					componentClass,
+					boundaryCounts,
+				);
+
+				const x = index % width;
+				const y = Math.floor(index / width);
+				const neighbors = [
+					x > 0 ? index - 1 : -1,
+					x + 1 < width ? index + 1 : -1,
+					y > 0 ? index - width : -1,
+					y + 1 < height ? index + width : -1,
+				];
+
+				for (const neighborIndex of neighbors) {
+					if (
+						neighborIndex < 0 ||
+						visited[neighborIndex] ||
+						filtered[neighborIndex] !== componentClass
+					) {
+						continue;
+					}
+					visited[neighborIndex] = 1;
+					queue[queueTail++] = neighborIndex;
+				}
+			}
+
+			if (componentIndices.length > maxComponentSize) {
+				continue;
+			}
+
+			const replacementClass = pickDominantBoundaryClass(boundaryCounts);
+			if (replacementClass == null) {
+				continue;
+			}
+
+			for (const index of componentIndices) {
+				filtered[index] = replacementClass;
+			}
+			changedInPass = true;
+		}
+
+		if (!changedInPass) {
+			break;
+		}
+	}
+
+	return filtered;
+}
+
 export async function bakeWorldCoverTexture(
 	bounds: GeoBounds,
 	outputWidth: number,
 	outputHeight: number,
+	processing: WorldCoverProcessing = "raw",
 ): Promise<BakedImagery | null> {
 	if (
 		!hasRasterSupport() ||
@@ -322,6 +468,11 @@ export async function bakeWorldCoverTexture(
 		}
 	}
 
+	const processedClassCodes =
+		processing === "no-islands"
+			? removeSmallClassIslands(outputClassCodes, outputWidth, outputHeight)
+			: outputClassCodes;
+
 	const canvas = createRasterCanvas(outputWidth, outputHeight);
 	const context = getRasterContext(canvas);
 	if (!context) {
@@ -330,7 +481,7 @@ export async function bakeWorldCoverTexture(
 
 	context.putImageData(
 		new ImageData(
-			colorizeClassCodes(outputClassCodes, outputWidth, outputHeight),
+			colorizeClassCodes(processedClassCodes, outputWidth, outputHeight),
 			outputWidth,
 			outputHeight,
 		),

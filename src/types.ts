@@ -86,17 +86,20 @@ export type ViewerStyle =
 	| "rainbow";
 export type HikingMapResolution = "low" | "standard" | "high" | "ultra";
 export type TerrainShape = "smooth" | "triangular";
+export type WorldCoverProcessing = "raw" | "no-islands";
 
 export type ViewerConfig = {
 	style: ViewerStyle;
 	hikingMapResolution: HikingMapResolution;
 	terrainShape: TerrainShape;
+	worldcoverProcessing: WorldCoverProcessing;
 };
 
 export type ParsedWidgetConfig = ViewerConfig & {
 	source: string;
 	hasExplicitHikingMapResolution: boolean;
 	hasExplicitTerrainShape: boolean;
+	hasExplicitWorldcoverProcessing: boolean;
 };
 
 export type ErrorPayload = {

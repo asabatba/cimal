@@ -9,10 +9,14 @@ import {
 	normalizeHikingMapResolution,
 	normalizePackPath,
 	normalizeViewerStyle,
+	normalizeWorldCoverProcessing,
 } from "./input.ts";
 import { encodeTerrainPack } from "./pack.ts";
 import { buildTerrainPayload } from "./terrain.ts";
-import { DEFAULT_HIKING_MAP_RESOLUTION } from "./viewerConfig.ts";
+import {
+	DEFAULT_HIKING_MAP_RESOLUTION,
+	DEFAULT_WORLDCOVER_PROCESSING,
+} from "./viewerConfig.ts";
 
 function buildWidgetSnippet(packPath: string): string {
 	return `\n\`\`\`${GPX_WIDGET_LANGUAGE}\n${packPath}\n\`\`\`\n`;
@@ -63,18 +67,32 @@ export async function buildCimalPackFromGpx(): Promise<void> {
 		return;
 	}
 	const style = normalizeViewerStyle(styleResponse);
-	const resolutionResponse = await editor.prompt(
-		"Baked hiking-map resolution",
-		DEFAULT_HIKING_MAP_RESOLUTION,
-	);
-	if (!resolutionResponse) {
-		return;
+	let hikingMapResolution = DEFAULT_HIKING_MAP_RESOLUTION;
+	if (style === "hiking-map") {
+		const resolutionResponse = await editor.prompt(
+			"Baked hiking-map resolution",
+			DEFAULT_HIKING_MAP_RESOLUTION,
+		);
+		if (!resolutionResponse) {
+			return;
+		}
+		hikingMapResolution = normalizeHikingMapResolution(resolutionResponse);
 	}
-
-	const hikingMapResolution = normalizeHikingMapResolution(resolutionResponse);
+	let worldcoverProcessing = DEFAULT_WORLDCOVER_PROCESSING;
+	if (style === "worldcover") {
+		const processingResponse = await editor.prompt(
+			"WorldCover processing",
+			DEFAULT_WORLDCOVER_PROCESSING,
+		);
+		if (!processingResponse) {
+			return;
+		}
+		worldcoverProcessing = normalizeWorldCoverProcessing(processingResponse);
+	}
 	const payload = await buildTerrainPayload(gpxSource, {
 		style,
 		hikingMapResolution,
+		worldcoverProcessing,
 	});
 	const packed = encodeTerrainPack(payload);
 	await space.writeFile(outputPath, packed);

@@ -3,14 +3,17 @@ import type {
 	ParsedWidgetConfig,
 	TerrainShape,
 	ViewerStyle,
+	WorldCoverProcessing,
 } from "./types.ts";
 import {
 	DEFAULT_HIKING_MAP_RESOLUTION,
 	DEFAULT_TERRAIN_SHAPE,
 	DEFAULT_VIEWER_STYLE,
+	DEFAULT_WORLDCOVER_PROCESSING,
 	SUPPORTED_HIKING_MAP_RESOLUTIONS,
 	SUPPORTED_TERRAIN_SHAPES,
 	SUPPORTED_VIEWER_STYLES,
+	SUPPORTED_WORLDCOVER_PROCESSING,
 } from "./viewerConfig.ts";
 
 type ResolvedWidgetSource =
@@ -26,7 +29,7 @@ function formatSupportedList(values: readonly string[]): string {
 }
 
 function supportedWidgetOptionsHelpText(): string {
-	return `style: ${formatSupportedValues(SUPPORTED_VIEWER_STYLES)}, terrain-shape: ${formatSupportedValues(SUPPORTED_TERRAIN_SHAPES)}, and optional hiking-map-resolution: ${formatSupportedValues(SUPPORTED_HIKING_MAP_RESOLUTIONS)}`;
+	return `style: ${formatSupportedValues(SUPPORTED_VIEWER_STYLES)}, terrain-shape: ${formatSupportedValues(SUPPORTED_TERRAIN_SHAPES)}, optional hiking-map-resolution: ${formatSupportedValues(SUPPORTED_HIKING_MAP_RESOLUTIONS)}, and optional worldcover-processing: ${formatSupportedValues(SUPPORTED_WORLDCOVER_PROCESSING)}`;
 }
 
 function isRemoteUrl(candidate: string): boolean {
@@ -117,6 +120,21 @@ export function normalizeTerrainShape(input: string): TerrainShape {
 	);
 }
 
+export function normalizeWorldCoverProcessing(
+	input: string,
+): WorldCoverProcessing {
+	const normalized = input.trim().toLowerCase();
+	if (
+		SUPPORTED_WORLDCOVER_PROCESSING.includes(normalized as WorldCoverProcessing)
+	) {
+		return normalized as WorldCoverProcessing;
+	}
+
+	throw new Error(
+		`Unsupported worldcover-processing "${input.trim()}". Supported values: ${formatSupportedList(SUPPORTED_WORLDCOVER_PROCESSING)}.`,
+	);
+}
+
 export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	const meaningfulLines = bodyText
 		.split(/\r?\n/)
@@ -130,7 +148,11 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	}
 
 	const [sourceLine, ...optionLines] = meaningfulLines;
-	if (/^(?:style|terrain-shape|hiking-map-resolution)\s*:/i.test(sourceLine)) {
+	if (
+		/^(?:style|terrain-shape|hiking-map-resolution|worldcover-processing)\s*:/i.test(
+			sourceLine,
+		)
+	) {
 		throw new Error(
 			`Put the .cimal path or GPX source on the first line, then add ${supportedWidgetOptionsHelpText()} below it.`,
 		);
@@ -139,9 +161,11 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 	let style = DEFAULT_VIEWER_STYLE;
 	let hikingMapResolution = DEFAULT_HIKING_MAP_RESOLUTION;
 	let terrainShape = DEFAULT_TERRAIN_SHAPE;
+	let worldcoverProcessing = DEFAULT_WORLDCOVER_PROCESSING;
 	let sawStyle = false;
 	let sawHikingMapResolution = false;
 	let sawTerrainShape = false;
+	let sawWorldcoverProcessing = false;
 	for (const line of optionLines) {
 		const styleMatch = /^style\s*:\s*(.+)$/i.exec(line);
 		if (styleMatch) {
@@ -160,6 +184,21 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 			}
 			terrainShape = normalizeTerrainShape(terrainShapeMatch[1]);
 			sawTerrainShape = true;
+			continue;
+		}
+
+		const worldcoverProcessingMatch =
+			/^worldcover-processing\s*:\s*(.+)$/i.exec(line);
+		if (worldcoverProcessingMatch) {
+			if (sawWorldcoverProcessing) {
+				throw new Error(
+					"Duplicate worldcover-processing option in cimal widget body.",
+				);
+			}
+			worldcoverProcessing = normalizeWorldCoverProcessing(
+				worldcoverProcessingMatch[1],
+			);
+			sawWorldcoverProcessing = true;
 			continue;
 		}
 
@@ -189,14 +228,21 @@ export function parseWidgetConfig(bodyText: string): ParsedWidgetConfig {
 			'Hiking-map resolution can only be used with "style: hiking-map".',
 		);
 	}
+	if (sawWorldcoverProcessing && style !== "worldcover") {
+		throw new Error(
+			'WorldCover processing can only be used with "style: worldcover".',
+		);
+	}
 
 	return {
 		source: sourceLine,
 		style,
 		hikingMapResolution,
 		terrainShape,
+		worldcoverProcessing,
 		hasExplicitHikingMapResolution: sawHikingMapResolution,
 		hasExplicitTerrainShape: sawTerrainShape,
+		hasExplicitWorldcoverProcessing: sawWorldcoverProcessing,
 	};
 }
 
@@ -220,6 +266,11 @@ export function resolveWidgetSource(
 		if (config.hasExplicitHikingMapResolution) {
 			throw new Error(
 				'Hiking-map resolution is baked into existing .cimal packs. Rebuild the pack from the GPX at the desired resolution instead of setting "hiking-map-resolution" on a .cimal widget.',
+			);
+		}
+		if (config.hasExplicitWorldcoverProcessing) {
+			throw new Error(
+				'WorldCover processing is baked into existing .cimal packs. Rebuild the pack from the GPX with the desired "worldcover-processing" option instead of setting it on a .cimal widget.',
 			);
 		}
 

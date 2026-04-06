@@ -11,6 +11,7 @@ This SilverBullet plug renders a `.cimal` terrain pack as a 3D terrain preview b
 - Supports per-widget visual styles: `classic`, `hiking-map`, `worldcover`, `vaporwave`, `lava`, `water-world`, `dracula`, `pastel`, and `rainbow`.
 - Bakes OpenHikingMap imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: hiking-map` is selected.
 - Bakes ESA WorldCover 2021 v200 land-cover imagery into new `.cimal` packs and uses it on the 3D terrain surface when `style: worldcover` is selected.
+- Supports optional WorldCover cleanup modes: `raw` and `no-islands`.
 - Supports hiking-map imagery presets: `low`, `standard`, `high`, and `ultra`.
 - Supports per-widget terrain shapes: `smooth` and `triangular`.
 - Falls back to classic elevation-based terrain shading when a pack has no baked hiking-map imagery.
@@ -59,6 +60,16 @@ terrain-shape: triangular
 ```
 ````
 
+Or build a WorldCover-backed pack from GPX while removing small isolated land-cover patches:
+
+````markdown
+```cimal
+Library/Tracks/track.gpx
+style: worldcover
+worldcover-processing: no-islands
+```
+````
+
 Or point the widget directly at a GPX source and let Cimal cache the generated pack:
 
 ````markdown
@@ -80,13 +91,15 @@ style: dracula
 
 The build step fetches the GPX, derives a padded bounding box around the route, pulls the required Copernicus tiles, simplifies and terrain-snaps the track, and writes a compact `.cimal` pack. The widget then reads that pack directly for fast repeat loads.
 
-The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add optional `style: classic|hiking-map|worldcover|vaporwave|lava|water-world|dracula|pastel|rainbow` and `terrain-shape: smooth|triangular` lines below it to choose the look per widget instance. If you omit them, Cimal defaults to `style: classic` and then applies the selected theme's default terrain shape. If the theme does not specify one, `terrain-shape: smooth` is used.
+The first meaningful line in a `cimal` widget body is always the `.cimal` path or GPX source. Add optional `style: classic|hiking-map|worldcover|vaporwave|lava|water-world|dracula|pastel|rainbow`, `terrain-shape: smooth|triangular`, and `worldcover-processing: raw|no-islands` lines below it to choose the look per widget instance. If you omit them, Cimal defaults to `style: classic`, `worldcover-processing: raw`, and then applies the selected theme's default terrain shape. If the theme does not specify one, `terrain-shape: smooth` is used.
 
 When the widget body points at a GPX source and `style: hiking-map` is active, you can also add `hiking-map-resolution: low|standard|high|ultra`. That resolution is baked into the generated `.cimal` pack and cached separately per preset. Higher presets use more network requests and produce larger embedded textures.
 
+When the widget body points at a GPX source and `style: worldcover` is active, you can also add `worldcover-processing: raw|no-islands`. The `no-islands` mode runs a pixel-preserving connected-component cleanup pass over the sampled WorldCover class raster and replaces small isolated class patches with the dominant surrounding class before the PNG is baked into the `.cimal` pack.
+
 `terrain-shape: triangular` changes only the viewer rendering. It keeps the same DEM grid and imagery UV mapping, but renders the top surface as faceted, non-smoothed triangles. An explicit `terrain-shape` in the widget always overrides any theme default.
 
-When the widget body points at an existing `.cimal` pack, `hiking-map-resolution` is not valid because the baked imagery is already fixed in the pack. Rebuild the pack from the GPX at the desired preset instead.
+When the widget body points at an existing `.cimal` pack, `hiking-map-resolution` and `worldcover-processing` are not valid because the baked imagery is already fixed in the pack. Rebuild the pack from the GPX with the desired preset instead.
 
 New `.cimal` packs now attempt to bake OpenHikingMap imagery during pack creation. If that imagery fetch or bake step fails, the pack is still written with terrain and track data only, and the viewer falls back to the built-in classic relief tint for `style: hiking-map`.
 
@@ -98,7 +111,7 @@ ESA WorldCover attribution in the viewer uses: `© ESA WorldCover project 2021 /
 
 The shaded styles (`classic`, `vaporwave`, `lava`, `water-world`, `dracula`, `pastel`, and `rainbow`) also apply a heuristic water-body detector that looks for large contiguous flat plateaus in the DEM and paints them blue. This is intentionally conservative and may miss some smaller lakes or reservoirs rather than over-painting terraces and other flat terrain. The `hiking-map` style does not add this synthetic blue overlay.
 
-If a `cimal` widget contains a raw GPX URL or GPX space path, Cimal now builds a `.cimal` pack automatically and caches it under `Library/.cache/cimal/packs/`. The cache key includes the GPX content hash, so editing a space GPX file produces a fresh cached pack.
+If a `cimal` widget contains a raw GPX URL or GPX space path, Cimal now builds a `.cimal` pack automatically and caches it under `Library/.cache/cimal/packs/`. The cache key includes the GPX content hash plus relevant bake options such as style, hiking-map resolution, and WorldCover processing mode, so editing a space GPX file or changing a bake option produces a fresh cached pack.
 
 ## Development
 
