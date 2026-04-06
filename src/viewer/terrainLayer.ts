@@ -222,7 +222,9 @@ function buildWaterOverlay(
 		polygonOffsetFactor: -1,
 		polygonOffsetUnits: -1,
 	});
-	return { geometry, material, mesh: new THREE.Mesh(geometry, material) };
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.receiveShadow = true;
+	return { geometry, material, mesh };
 }
 
 export function createTerrainLayer(
@@ -366,6 +368,8 @@ export function createTerrainLayer(
 		metalness: activeTheme.terrain.metalness,
 	});
 	const terrain = new THREE.Mesh(topGeometry, terrainMaterial);
+	terrain.castShadow = !activeTheme.wireframe;
+	terrain.receiveShadow = true;
 
 	const terrainDepth = Math.max(90, elevationRange * 0.42, sceneSpan * 0.08);
 	const terrainBottomY = -terrainDepth;
@@ -383,6 +387,7 @@ export function createTerrainLayer(
 		side: THREE.DoubleSide,
 	});
 	const terrainSides = new THREE.Mesh(sideGeometry, sideMaterial);
+	terrainSides.castShadow = !activeTheme.wireframe;
 
 	const bottomGeometry = new THREE.PlaneGeometry(spanX, spanZ);
 	bottomGeometry.rotateX(-Math.PI / 2);

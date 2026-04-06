@@ -17,10 +17,13 @@ export async function renderTerrainViewer(
 	activeTheme: ViewerTheme,
 	viewerConfig: ViewerConfig,
 ): Promise<() => void> {
-	const [THREE, { OrbitControls }] = await Promise.all([
+	const [THREE, { OrbitControls }, { RoomEnvironment }] = await Promise.all([
 		import(`https://esm.sh/three@${THREE_JS_VERSION}`),
 		import(
 			`https://esm.sh/three@${THREE_JS_VERSION}/examples/jsm/controls/OrbitControls.js`
+		),
+		import(
+			`https://esm.sh/three@${THREE_JS_VERSION}/examples/jsm/environments/RoomEnvironment.js`
 		),
 	]);
 
@@ -43,6 +46,10 @@ export async function renderTerrainViewer(
 	});
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 	renderer.outputColorSpace = THREE.SRGBColorSpace;
+	renderer.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer.toneMappingExposure = 1.0;
+	renderer.shadowMap.enabled = true;
+	renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 	const scene = new THREE.Scene();
 	scene.fog = new THREE.FogExp2(activeTheme.fogColor, fogDensity);
@@ -86,7 +93,23 @@ export async function renderTerrainViewer(
 		activeTheme.sunIntensity,
 	);
 	sun.position.set(-spanX * 0.5, Math.max(spanX, spanZ), spanZ * 0.4);
+	sun.castShadow = true;
+	sun.shadow.mapSize.set(2048, 2048);
+	sun.shadow.bias = -0.0002;
+	sun.shadow.camera.left = -sceneSpan * 0.7;
+	sun.shadow.camera.right = sceneSpan * 0.7;
+	sun.shadow.camera.top = sceneSpan * 0.7;
+	sun.shadow.camera.bottom = -sceneSpan * 0.7;
+	sun.shadow.camera.near = Math.max(sceneSpan * 0.1, 10);
+	sun.shadow.camera.far = sceneSpan * 4;
 	scene.add(sun);
+
+	const pmremGenerator = new THREE.PMREMGenerator(renderer);
+	const roomEnv = new RoomEnvironment();
+	const envTexture = pmremGenerator.fromScene(roomEnv).texture;
+	roomEnv.dispose();
+	pmremGenerator.dispose();
+	scene.environment = envTexture;
 
 	const terrainLayer = createTerrainLayer(THREE, payload, activeTheme, {
 		spanX,
@@ -161,6 +184,7 @@ export async function renderTerrainViewer(
 		keyboardControls.destroy();
 		controls.dispose();
 		loadedTexture?.dispose();
+		envTexture.dispose();
 		terrainLayer.dispose();
 		trackLayer.dispose();
 		scene.clear();

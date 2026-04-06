@@ -72,7 +72,10 @@ export function createTrackLayer(
 			emissiveIntensity: activeTheme.track.emissiveIntensity,
 			side: THREE.DoubleSide,
 		});
-		objects.push(new THREE.Mesh(trackGeometry, trackMaterial));
+		const trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
+		trackMesh.castShadow = true;
+		trackMesh.receiveShadow = true;
+		objects.push(trackMesh);
 	}
 
 	const markerGeometry = new THREE.SphereGeometry(
@@ -99,6 +102,7 @@ export function createTrackLayer(
 		start.y - grid.minElevation + trackHeightOffset + 10,
 		start.z,
 	);
+	startMarker.castShadow = true;
 	objects.push(startMarker);
 
 	const endMarker = new THREE.Mesh(markerGeometry, finishMaterial);
@@ -107,6 +111,7 @@ export function createTrackLayer(
 		end.y - grid.minElevation + trackHeightOffset + 10,
 		end.z,
 	);
+	endMarker.castShadow = true;
 	objects.push(endMarker);
 
 	const ringGeometry = new THREE.RingGeometry(
