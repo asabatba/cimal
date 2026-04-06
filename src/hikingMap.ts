@@ -4,7 +4,15 @@ import {
 	getCachedHikingMapTile,
 	putCachedHikingMapTile,
 } from "./cache.ts";
-import { bytesToDataUrl, dataUrlMimeType } from "./dataUrl.ts";
+import { dataUrlMimeType } from "./dataUrl.ts";
+import {
+	canvasToDataUrl,
+	createRasterCanvas,
+	getRasterContext,
+	hasDomCanvasSupport,
+	type RasterCanvas,
+	type RasterContext,
+} from "./raster.ts";
 import type { BakedImagery, GeoBounds, HikingMapResolution } from "./types.ts";
 
 type HikingMapTexturePreset = {
@@ -37,10 +45,6 @@ type CoverageTile = {
 	url: string;
 };
 
-type RasterCanvas = HTMLCanvasElement | OffscreenCanvas;
-type RasterContext =
-	| CanvasRenderingContext2D
-	| OffscreenCanvasRenderingContext2D;
 type RasterImage = ImageBitmap | HTMLImageElement;
 type EncodedRasterImage = {
 	dataUrl: string;
@@ -101,13 +105,6 @@ function getTexturePreset(
 	return (
 		HIKING_MAP_TEXTURE_PRESETS[resolution] ??
 		HIKING_MAP_TEXTURE_PRESETS.standard
-	);
-}
-
-function hasDomCanvasSupport(): boolean {
-	return (
-		typeof document !== "undefined" &&
-		typeof document.createElement === "function"
 	);
 }
 
@@ -198,25 +195,6 @@ function pickTileCoverage(
 	return fallback;
 }
 
-function createRasterCanvas(width: number, height: number): RasterCanvas {
-	if (typeof OffscreenCanvas !== "undefined") {
-		return new OffscreenCanvas(width, height);
-	}
-
-	if (hasDomCanvasSupport()) {
-		const canvas = document.createElement("canvas");
-		canvas.width = width;
-		canvas.height = height;
-		return canvas;
-	}
-
-	throw new Error("Canvas raster support is unavailable in this runtime.");
-}
-
-function getRasterContext(canvas: RasterCanvas): RasterContext | null {
-	return canvas.getContext("2d");
-}
-
 function loadDomImage(url: string): Promise<HTMLImageElement> {
 	return new Promise((resolve, reject) => {
 		const image = new Image();
@@ -280,24 +258,6 @@ async function loadCachedTileImage(
 	);
 	await putCachedHikingMapTile(cacheEntry.key, cacheEntry.path, bytes);
 	return decodeTileBytes(bytes);
-}
-
-async function canvasToDataUrl(
-	canvas: RasterCanvas,
-	mimeType: string,
-	quality?: number,
-): Promise<string> {
-	if ("toDataURL" in canvas && typeof canvas.toDataURL === "function") {
-		return canvas.toDataURL(mimeType, quality);
-	}
-
-	if ("convertToBlob" in canvas && typeof canvas.convertToBlob === "function") {
-		const blob = await canvas.convertToBlob({ type: mimeType, quality });
-		const bytes = new Uint8Array(await blob.arrayBuffer());
-		return bytesToDataUrl(bytes, blob.type || mimeType);
-	}
-
-	throw new Error("Canvas export is unavailable in this runtime.");
 }
 
 function resizeRasterCanvas(

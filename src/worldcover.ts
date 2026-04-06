@@ -1,17 +1,18 @@
 import { fromUrl } from "geotiff";
-import { bytesToDataUrl } from "./dataUrl.ts";
-import { clamp, intersectBounds } from "./math.ts";
+import { clamp, computeRasterWindow, intersectBounds } from "./math.ts";
+import {
+	canvasToDataUrl,
+	createRasterCanvas,
+	getRasterContext,
+	type RasterCanvas,
+	type RasterContext,
+} from "./raster.ts";
 import type { BakedImagery, GeoBounds, WorldCoverProcessing } from "./types.ts";
 
 type WorldCoverTileIndex = {
 	southLat: number;
 	westLon: number;
 };
-
-type RasterCanvas = HTMLCanvasElement | OffscreenCanvas;
-type RasterContext =
-	| CanvasRenderingContext2D
-	| OffscreenCanvasRenderingContext2D;
 
 const WORLDCOVER_HTTP_ROOT =
 	"https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map";
@@ -45,51 +46,6 @@ function hasRasterSupport(): boolean {
 			(typeof document !== "undefined" &&
 				typeof document.createElement === "function"))
 	);
-}
-
-function createRasterCanvas(width: number, height: number): RasterCanvas {
-	if (typeof OffscreenCanvas !== "undefined") {
-		return new OffscreenCanvas(width, height);
-	}
-
-	if (
-		typeof document !== "undefined" &&
-		typeof document.createElement === "function"
-	) {
-		const canvas = document.createElement("canvas");
-		canvas.width = width;
-		canvas.height = height;
-		return canvas;
-	}
-
-	throw new Error("Canvas raster support is unavailable in this runtime.");
-}
-
-function getRasterContext(canvas: RasterCanvas): RasterContext | null {
-	const context = canvas.getContext("2d");
-	if (context) {
-		context.imageSmoothingEnabled = false;
-	}
-	return context;
-}
-
-async function canvasToDataUrl(
-	canvas: RasterCanvas,
-	mimeType: string,
-): Promise<string> {
-	if ("toDataURL" in canvas && typeof canvas.toDataURL === "function") {
-		return canvas.toDataURL(mimeType);
-	}
-
-	if ("convertToBlob" in canvas && typeof canvas.convertToBlob === "function") {
-		const blob = await canvas.convertToBlob({ type: mimeType });
-		return bytesToDataUrl(
-			new Uint8Array(await blob.arrayBuffer()),
-			blob.type || mimeType,
-		);
-	}
-
-	throw new Error("Canvas export is unavailable in this runtime.");
 }
 
 function padDegrees(value: number, width: number): string {
@@ -146,51 +102,6 @@ function enumerateTiles(bounds: GeoBounds): WorldCoverTileIndex[] {
 	}
 
 	return tiles;
-}
-
-function computeRasterWindow(
-	imageBounds: GeoBounds,
-	overlap: GeoBounds,
-	imageWidth: number,
-	imageHeight: number,
-): [number, number, number, number] {
-	const x1 = clamp(
-		Math.floor(
-			((overlap.minLon - imageBounds.minLon) /
-				(imageBounds.maxLon - imageBounds.minLon)) *
-				imageWidth,
-		),
-		0,
-		imageWidth - 1,
-	);
-	const x2 = clamp(
-		Math.ceil(
-			((overlap.maxLon - imageBounds.minLon) /
-				(imageBounds.maxLon - imageBounds.minLon)) *
-				imageWidth,
-		),
-		x1 + 1,
-		imageWidth,
-	);
-	const y1 = clamp(
-		Math.floor(
-			((imageBounds.maxLat - overlap.maxLat) /
-				(imageBounds.maxLat - imageBounds.minLat)) *
-				imageHeight,
-		),
-		0,
-		imageHeight - 1,
-	);
-	const y2 = clamp(
-		Math.ceil(
-			((imageBounds.maxLat - overlap.minLat) /
-				(imageBounds.maxLat - imageBounds.minLat)) *
-				imageHeight,
-		),
-		y1 + 1,
-		imageHeight,
-	);
-	return [x1, y1, x2, y2];
 }
 
 function computeOutputWindow(
@@ -474,7 +385,7 @@ export async function bakeWorldCoverTexture(
 			: outputClassCodes;
 
 	const canvas = createRasterCanvas(outputWidth, outputHeight);
-	const context = getRasterContext(canvas);
+	const context = getRasterContext(canvas, { smoothing: false });
 	if (!context) {
 		return null;
 	}

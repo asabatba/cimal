@@ -119,3 +119,48 @@ export function projectToLocalMeters(
 		z: (point.lat - center.lat) * -metersPerDegree.lat,
 	};
 }
+
+export function computeRasterWindow(
+	imageBounds: GeoBounds,
+	overlap: GeoBounds,
+	imageWidth: number,
+	imageHeight: number,
+): [number, number, number, number] {
+	const x1 = clamp(
+		Math.floor(
+			((overlap.minLon - imageBounds.minLon) /
+				(imageBounds.maxLon - imageBounds.minLon)) *
+				imageWidth,
+		),
+		0,
+		imageWidth - 1,
+	);
+	const x2 = clamp(
+		Math.ceil(
+			((overlap.maxLon - imageBounds.minLon) /
+				(imageBounds.maxLon - imageBounds.minLon)) *
+				imageWidth,
+		),
+		x1 + 1,
+		imageWidth,
+	);
+	const y1 = clamp(
+		Math.floor(
+			((imageBounds.maxLat - overlap.maxLat) /
+				(imageBounds.maxLat - imageBounds.minLat)) *
+				imageHeight,
+		),
+		0,
+		imageHeight - 1,
+	);
+	const y2 = clamp(
+		Math.ceil(
+			((imageBounds.maxLat - overlap.minLat) /
+				(imageBounds.maxLat - imageBounds.minLat)) *
+				imageHeight,
+		),
+		y1 + 1,
+		imageHeight,
+	);
+	return [x1, y1, x2, y2];
+}

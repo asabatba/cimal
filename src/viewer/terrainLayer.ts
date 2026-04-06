@@ -2,7 +2,7 @@ import type * as ThreeType from "three";
 import type { TerrainPayload, TerrainShape } from "../types.ts";
 import { resolveColorStops, sampleGradient } from "./colors.ts";
 import { buildTerrainSideGeometry } from "./geometry.ts";
-import type { ViewerTheme } from "./themes.ts";
+import type { ThemeWater, ViewerTheme } from "./themeHelpers.ts";
 import { detectWaterMask } from "./water.ts";
 
 type TerrainLayer = {
@@ -132,6 +132,97 @@ function createTerrainAppearanceSampler(
 			reliefShade: THREE.MathUtils.clamp(reliefValue, 0.64, 1.18),
 		};
 	};
+}
+
+type WaterOverlay = {
+	geometry: ThreeType.BufferGeometry;
+	material: ThreeType.MeshStandardMaterial;
+	mesh: ThreeType.Mesh;
+};
+
+function buildWaterOverlay(
+	THREE: typeof ThreeType,
+	grid: TerrainPayload["grid"],
+	positions: Float32Array,
+	waterMask: Uint8Array,
+	shoreStrengths: Float32Array,
+	waterStops: ReturnType<typeof resolveColorStops>,
+	shoreTint: ThreeType.Color | null,
+	theme: ThemeWater,
+	elevationRange: number,
+	sceneSpan: number,
+): WaterOverlay | null {
+	const waterPositions: number[] = [];
+	const waterColors: number[] = [];
+	const waterIndices: number[] = [];
+	const overlayHeight = Math.max(1.25, sceneSpan * 0.00008);
+
+	for (let row = 0; row < grid.height - 1; row += 1) {
+		for (let column = 0; column < grid.width - 1; column += 1) {
+			const topLeft = row * grid.width + column;
+			const topRight = topLeft + 1;
+			const bottomLeft = topLeft + grid.width;
+			const bottomRight = bottomLeft + 1;
+			const triangles = [
+				[topLeft, bottomLeft, topRight],
+				[topRight, bottomLeft, bottomRight],
+			];
+
+			for (const triangle of triangles) {
+				if (!triangle.every((vertex) => waterMask[vertex] === 1)) {
+					continue;
+				}
+
+				const baseIndex = waterPositions.length / 3;
+				for (const vertex of triangle) {
+					const normalized =
+						(grid.elevations[vertex] - grid.minElevation) / elevationRange;
+					const waterColor = sampleGradient(THREE, waterStops, normalized);
+					if (shoreTint) {
+						waterColor.lerp(shoreTint, shoreStrengths[vertex] * 0.7);
+					}
+					waterPositions.push(
+						positions[vertex * 3],
+						positions[vertex * 3 + 1] + overlayHeight,
+						positions[vertex * 3 + 2],
+					);
+					waterColors.push(waterColor.r, waterColor.g, waterColor.b);
+				}
+				waterIndices.push(baseIndex, baseIndex + 1, baseIndex + 2);
+			}
+		}
+	}
+
+	if (waterPositions.length === 0) {
+		return null;
+	}
+
+	const geometry = new THREE.BufferGeometry();
+	geometry.setIndex(waterIndices);
+	geometry.setAttribute(
+		"position",
+		new THREE.Float32BufferAttribute(waterPositions, 3),
+	);
+	geometry.setAttribute(
+		"color",
+		new THREE.Float32BufferAttribute(waterColors, 3),
+	);
+	geometry.computeVertexNormals();
+	const material = new THREE.MeshStandardMaterial({
+		vertexColors: true,
+		transparent: true,
+		opacity: theme.opacity,
+		roughness: THREE.MathUtils.clamp(
+			1 - theme.specularStrength * 0.82,
+			0.08,
+			0.95,
+		),
+		metalness: THREE.MathUtils.clamp(theme.specularStrength * 0.38, 0, 0.45),
+		polygonOffset: true,
+		polygonOffsetFactor: -1,
+		polygonOffsetUnits: -1,
+	});
+	return { geometry, material, mesh: new THREE.Mesh(geometry, material) };
 }
 
 export function createTerrainLayer(
@@ -303,90 +394,29 @@ export function createTerrainLayer(
 	const terrainBottom = new THREE.Mesh(bottomGeometry, bottomMaterial);
 	terrainBottom.position.y = terrainBottomY;
 
-	let waterGeometry: ThreeType.BufferGeometry | null = null;
-	let waterMaterial: ThreeType.MeshStandardMaterial | null = null;
-	let waterOverlay: ThreeType.Mesh | null = null;
-	if (activeTheme.useWaterTint) {
-		const waterPositions: number[] = [];
-		const waterColors: number[] = [];
-		const waterIndices: number[] = [];
-		const overlayHeight = Math.max(1.25, sceneSpan * 0.00008);
-
-		for (let row = 0; row < grid.height - 1; row += 1) {
-			for (let column = 0; column < grid.width - 1; column += 1) {
-				const topLeft = row * grid.width + column;
-				const topRight = topLeft + 1;
-				const bottomLeft = topLeft + grid.width;
-				const bottomRight = bottomLeft + 1;
-				const triangles = [
-					[topLeft, bottomLeft, topRight],
-					[topRight, bottomLeft, bottomRight],
-				];
-
-				for (const triangle of triangles) {
-					if (!triangle.every((vertex) => waterMask[vertex] === 1)) {
-						continue;
-					}
-
-					const baseIndex = waterPositions.length / 3;
-					for (const vertex of triangle) {
-						const normalized =
-							(grid.elevations[vertex] - grid.minElevation) / elevationRange;
-						const waterColor = sampleGradient(THREE, waterStops, normalized);
-						if (shoreTint) {
-							waterColor.lerp(shoreTint, shoreStrengths[vertex] * 0.7);
-						}
-						waterPositions.push(
-							positions[vertex * 3],
-							positions[vertex * 3 + 1] + overlayHeight,
-							positions[vertex * 3 + 2],
-						);
-						waterColors.push(waterColor.r, waterColor.g, waterColor.b);
-					}
-					waterIndices.push(baseIndex, baseIndex + 1, baseIndex + 2);
-				}
-			}
-		}
-
-		if (waterPositions.length > 0) {
-			waterGeometry = new THREE.BufferGeometry();
-			waterGeometry.setIndex(waterIndices);
-			waterGeometry.setAttribute(
-				"position",
-				new THREE.Float32BufferAttribute(waterPositions, 3),
-			);
-			waterGeometry.setAttribute(
-				"color",
-				new THREE.Float32BufferAttribute(waterColors, 3),
-			);
-			waterGeometry.computeVertexNormals();
-			waterMaterial = new THREE.MeshStandardMaterial({
-				vertexColors: true,
-				transparent: true,
-				opacity: activeTheme.water.opacity,
-				roughness: THREE.MathUtils.clamp(
-					1 - activeTheme.water.specularStrength * 0.82,
-					0.08,
-					0.95,
-				),
-				metalness: THREE.MathUtils.clamp(
-					activeTheme.water.specularStrength * 0.38,
-					0,
-					0.45,
-				),
-				polygonOffset: true,
-				polygonOffsetFactor: -1,
-				polygonOffsetUnits: -1,
-			});
-			waterOverlay = new THREE.Mesh(waterGeometry, waterMaterial);
-		}
-	}
+	const waterOverlayResult = activeTheme.useWaterTint
+		? buildWaterOverlay(
+				THREE,
+				grid,
+				positions,
+				waterMask,
+				shoreStrengths,
+				waterStops,
+				shoreTint,
+				activeTheme.water,
+				elevationRange,
+				sceneSpan,
+			)
+		: null;
 
 	return {
-		objects: [terrainSides, terrainBottom, terrain, waterOverlay].filter(
-			Boolean,
-		) as ThreeType.Object3D[],
-		waterMaterial,
+		objects: [
+			terrainSides,
+			terrainBottom,
+			terrain,
+			waterOverlayResult?.mesh ?? null,
+		].filter(Boolean) as ThreeType.Object3D[],
+		waterMaterial: waterOverlayResult?.material ?? null,
 		applyBakedTexture(texture) {
 			topGeometry.setAttribute("color", hikingBlendAttribute);
 			topGeometry.attributes.color.needsUpdate = true;
@@ -394,8 +424,8 @@ export function createTerrainLayer(
 			terrainMaterial.needsUpdate = true;
 		},
 		dispose() {
-			waterGeometry?.dispose();
-			waterMaterial?.dispose();
+			waterOverlayResult?.geometry.dispose();
+			waterOverlayResult?.material.dispose();
 			geometry.dispose();
 			if (topGeometry !== geometry) {
 				topGeometry.dispose();
