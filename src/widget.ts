@@ -80,10 +80,16 @@ async function renderPackWidget(
 
 async function loadOrBuildGpxPayload(
 	gpxSource: string,
+	style: ViewerConfig["style"],
 	hikingMapResolution: ViewerConfig["hikingMapResolution"],
 ): Promise<TerrainPayload> {
 	const xml = await readGpxXml(gpxSource);
-	const cacheKey = buildCimalPackCacheKey(gpxSource, xml, hikingMapResolution);
+	const cacheKey = buildCimalPackCacheKey(
+		gpxSource,
+		xml,
+		style,
+		hikingMapResolution,
+	);
 	let packed = await getCachedPack(cacheKey);
 
 	if (packed) {
@@ -99,6 +105,7 @@ async function loadOrBuildGpxPayload(
 	}
 
 	const payload = await buildTerrainPayloadFromGpxXml(gpxSource, xml, {
+		style,
 		hikingMapResolution,
 	});
 	const cacheEntry = buildPackedCimalCacheEntry(cacheKey, gpxSource);
@@ -120,6 +127,7 @@ async function renderGpxSourceWidget(
 }> {
 	const payload = await loadOrBuildGpxPayload(
 		gpxSource,
+		viewerConfig.style,
 		viewerConfig.hikingMapResolution,
 	);
 	return buildWidgetSuccessResult(payload, viewerConfig);

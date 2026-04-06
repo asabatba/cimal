@@ -35,23 +35,25 @@ function replacePlaceholder(
 function normalizePayloadForEmbedding(
 	payload: ErrorPayload | TerrainPayload,
 ): ErrorPayload | TerrainPayload {
-	if (!("bakedHikingMap" in payload) || !payload.bakedHikingMap) {
+	if (!("bakedImagery" in payload) || !payload.bakedImagery) {
 		return payload;
 	}
 
 	if (
-		payload.bakedHikingMap.dataUrl.length <=
+		payload.bakedImagery.dataUrl.length <=
 		MAX_EMBEDDED_BAKED_TEXTURE_DATA_URL_LENGTH
 	) {
 		return payload;
 	}
 
 	const warning =
-		"The baked hiking-map texture in this pack is too large to embed in the widget iframe. Rebuild the pack at a lower hiking-map resolution to display it here.";
+		payload.bakedImagery.kind === "hiking-map"
+			? "The baked hiking-map texture in this pack is too large to embed in the widget iframe. Rebuild the pack at a lower hiking-map resolution to display it here."
+			: "The baked ESA WorldCover texture in this pack is too large to embed in the widget iframe.";
 
 	return {
 		...payload,
-		bakedHikingMap: undefined,
+		bakedImagery: undefined,
 		warning: payload.warning ? `${payload.warning} ${warning}` : warning,
 	};
 }

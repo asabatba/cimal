@@ -1,4 +1,4 @@
-import type { ViewerStyle } from "../types.ts";
+import type { BakedImageryKind, ViewerStyle } from "../types.ts";
 
 type ColorStop = { t: number; color: number };
 
@@ -64,7 +64,7 @@ type ThemeHud = {
 export type ViewerTheme = {
 	cssVars: Record<string, string>;
 	styleDescription: string;
-	useHikingMap: boolean;
+	imageryKind?: BakedImageryKind;
 	useWaterTint: boolean;
 	fogColor: number;
 	hemisphereSky: number;
@@ -199,7 +199,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#9db0bb",
 		},
 		styleDescription: "Style: Classic relief tint.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x102029,
 		hemisphereSky: 0xdaf2ff,
@@ -225,7 +224,7 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#a2b7b0",
 		},
 		styleDescription: "Imagery: baked OpenHikingMap texture.",
-		useHikingMap: true,
+		imageryKind: "hiking-map",
 		useWaterTint: false,
 		fogColor: 0x112326,
 		hemisphereSky: 0xe0f0f6,
@@ -257,6 +256,50 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			atmosphereGlow: "rgba(241, 143, 67, 0.14)",
 		}),
 	}),
+	worldcover: createTheme({
+		cssVars: {
+			"--bg-1": "#11161c",
+			"--bg-2": "#29333a",
+			"--card": "rgba(15, 22, 22, 0.78)",
+			"--card-border": "rgba(255, 255, 255, 0.14)",
+			"--accent": "#ffdf6e",
+			"--accent-soft": "#fff4bf",
+			"--text": "#eff5f4",
+			"--muted": "#aab8af",
+		},
+		styleDescription: "Imagery: baked ESA WorldCover texture.",
+		imageryKind: "worldcover",
+		useWaterTint: false,
+		fogColor: 0x141b1b,
+		hemisphereSky: 0xe6f1ef,
+		hemisphereGround: 0x283228,
+		hemisphereIntensity: 1.22,
+		sunColor: 0xfff3ce,
+		sunIntensity: 1.18,
+		terrain: terrainDefaults({
+			aspectTint: {
+				cool: 0x6a8fa1,
+				warm: 0xb8945b,
+				strength: 0.02,
+			},
+			reliefShading: {
+				shadow: 0.92,
+				highlight: 1.0,
+				strength: 0.18,
+				curve: 1.0,
+			},
+		}),
+		water: waterDefaults({
+			opacity: 0.5,
+			shoreTint: undefined,
+			shoreWidth: 0,
+		}),
+		track: trackDefaults({}),
+		markers: markerDefaults({}),
+		hud: hudDefaults({
+			atmosphereGlow: "rgba(255, 223, 110, 0.14)",
+		}),
+	}),
 	vaporwave: createTheme({
 		cssVars: {
 			"--bg-1": "#120621",
@@ -269,7 +312,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#d3a9ea",
 		},
 		styleDescription: "Style: Vaporwave flavour.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x1b0b2f,
 		hemisphereSky: 0x8acfff,
@@ -355,7 +397,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#d6a48d",
 		},
 		styleDescription: "Style: Volcanic lava glow.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x230904,
 		hemisphereSky: 0xffb36b,
@@ -442,7 +483,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#9fcfdb",
 		},
 		styleDescription: "Style: Oceanic blue world.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x0a2232,
 		hemisphereSky: 0xb7edff,
@@ -529,7 +569,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#bd93f9",
 		},
 		styleDescription: "Style: Dracula nightscape.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x171227,
 		hemisphereSky: 0xb799ff,
@@ -615,7 +654,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#8a7b93",
 		},
 		styleDescription: "Style: Soft pastel atlas.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0xd9e9f4,
 		hemisphereSky: 0xfffbff,
@@ -702,7 +740,6 @@ export const styleThemes: Record<ViewerStyle, ViewerTheme> = {
 			"--muted": "#c3d0ff",
 		},
 		styleDescription: "Style: Rainbow spectrum terrain.",
-		useHikingMap: false,
 		useWaterTint: true,
 		fogColor: 0x181a39,
 		hemisphereSky: 0xa4e8ff,

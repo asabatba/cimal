@@ -9,6 +9,7 @@ export const DEFAULT_HIKING_MAP_RESOLUTION: HikingMapResolution = "standard";
 export const SUPPORTED_VIEWER_STYLES: ViewerStyle[] = [
 	"classic",
 	"hiking-map",
+	"worldcover",
 	"vaporwave",
 	"lava",
 	"water-world",

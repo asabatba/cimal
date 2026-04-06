@@ -26,13 +26,16 @@ import type {
 	HikingMapResolution,
 	LocalPoint,
 	TerrainPayload,
+	ViewerStyle,
 } from "./types.ts";
 import { DEFAULT_HIKING_MAP_RESOLUTION } from "./viewerConfig.ts";
+import { bakeWorldCoverTexture } from "./worldcover.ts";
 
 const TRACK_RESAMPLE_SPACING_METERS = 50;
 const TRACK_VISUAL_MARGIN_METERS = 180;
 
 type TerrainBuildOptions = {
+	style?: ViewerStyle;
 	hikingMapResolution?: HikingMapResolution;
 };
 
@@ -249,20 +252,36 @@ export async function buildTerrainPayloadFromTrackData(
 		(point) => point.elevation,
 	);
 	const title = gpxUrl.split("/").filter(Boolean).pop() ?? "GPX track";
-	let bakedHikingMap: TerrainPayload["bakedHikingMap"];
-
-	try {
-		bakedHikingMap =
-			(await bakeHikingMapTexture(
-				paddedBounds,
-				options.hikingMapResolution ?? DEFAULT_HIKING_MAP_RESOLUTION,
-			)) ?? undefined;
-	} catch (error) {
-		console.warn(
-			"Unable to bake OpenHikingMap imagery into .cimal pack.",
-			error,
-		);
-		bakedHikingMap = undefined;
+	let bakedImagery: TerrainPayload["bakedImagery"];
+	if (options.style === "worldcover") {
+		try {
+			bakedImagery =
+				(await bakeWorldCoverTexture(
+					paddedBounds,
+					gridSize.width,
+					gridSize.height,
+				)) ?? undefined;
+		} catch (error) {
+			console.warn(
+				"Unable to bake ESA WorldCover imagery into .cimal pack.",
+				error,
+			);
+			bakedImagery = undefined;
+		}
+	} else if (options.style === "hiking-map") {
+		try {
+			bakedImagery =
+				(await bakeHikingMapTexture(
+					paddedBounds,
+					options.hikingMapResolution ?? DEFAULT_HIKING_MAP_RESOLUTION,
+				)) ?? undefined;
+		} catch (error) {
+			console.warn(
+				"Unable to bake OpenHikingMap imagery into .cimal pack.",
+				error,
+			);
+			bakedImagery = undefined;
+		}
 	}
 
 	return {
@@ -280,7 +299,7 @@ export async function buildTerrainPayloadFromTrackData(
 			maxElevation,
 		},
 		track: renderedTrack,
-		bakedHikingMap,
+		bakedImagery,
 		stats: {
 			distanceKm:
 				elevationStats.distanceMeters / 1000 || track.distanceMeters / 1000,

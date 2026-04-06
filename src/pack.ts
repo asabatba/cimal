@@ -16,15 +16,17 @@ function align4(n: number): number {
 
 function encodeHeader(
 	payload: TerrainPayload,
-	bakedHikingMapByteLength: number,
+	bakedImageryByteLength: number,
 ): Uint8Array {
-	const bakedHikingMap = payload.bakedHikingMap
+	const bakedImagery = payload.bakedImagery
 		? {
-				width: payload.bakedHikingMap.width,
-				height: payload.bakedHikingMap.height,
-				mimeType: payload.bakedHikingMap.mimeType,
-				resolution: payload.bakedHikingMap.resolution,
-				byteLength: bakedHikingMapByteLength,
+				kind: payload.bakedImagery.kind,
+				width: payload.bakedImagery.width,
+				height: payload.bakedImagery.height,
+				mimeType: payload.bakedImagery.mimeType,
+				sourceVersion: payload.bakedImagery.sourceVersion,
+				resolution: payload.bakedImagery.resolution,
+				byteLength: bakedImageryByteLength,
 			}
 		: undefined;
 
@@ -43,7 +45,7 @@ function encodeHeader(
 		},
 		stats: payload.stats,
 		trackPointCount: payload.track.length,
-		bakedHikingMap,
+		bakedImagery,
 	};
 	return encoder.encode(JSON.stringify(header));
 }
@@ -89,10 +91,10 @@ function toByteView(values: Uint16Array | Float32Array): Uint8Array {
 }
 
 export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
-	const bakedHikingMapBytes = payload.bakedHikingMap
-		? dataUrlToBytes(payload.bakedHikingMap.dataUrl)
+	const bakedImageryBytes = payload.bakedImagery
+		? dataUrlToBytes(payload.bakedImagery.dataUrl)
 		: new Uint8Array(0);
-	const headerBytes = encodeHeader(payload, bakedHikingMapBytes.byteLength);
+	const headerBytes = encodeHeader(payload, bakedImageryBytes.byteLength);
 	const headerPaddedLength = align4(headerBytes.length);
 	const gridBytes = toByteView(quantizeGrid(payload));
 	const gridPaddedLength = align4(gridBytes.length);
@@ -102,7 +104,7 @@ export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 			headerPaddedLength +
 			gridPaddedLength +
 			trackBytes.length +
-			bakedHikingMapBytes.length,
+			bakedImageryBytes.length,
 	);
 	output.set(encoder.encode(PACK_MAGIC), 0);
 
@@ -118,8 +120,8 @@ export function encodeTerrainPack(payload: TerrainPayload): Uint8Array {
 	offset += gridPaddedLength;
 	output.set(trackBytes, offset);
 	offset += trackBytes.length;
-	if (bakedHikingMapBytes.length > 0) {
-		output.set(bakedHikingMapBytes, offset);
+	if (bakedImageryBytes.length > 0) {
+		output.set(bakedImageryBytes, offset);
 	}
 
 	return output;
@@ -173,8 +175,25 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 		throw new Error("Invalid .cimal pack: track section is truncated.");
 	}
 
-	let bakedHikingMap: TerrainPayload["bakedHikingMap"];
-	if (version >= PACK_IMAGE_FORMAT_VERSION && header.bakedHikingMap) {
+	let bakedImagery: TerrainPayload["bakedImagery"];
+	if (version >= CIMAL_PACK_VERSION && header.bakedImagery) {
+		const imageStart = trackEnd;
+		const imageEnd = imageStart + header.bakedImagery.byteLength;
+		if (imageEnd > data.byteLength) {
+			throw new Error("Invalid .cimal pack: imagery section is truncated.");
+		}
+
+		const imageBytes = data.slice(imageStart, imageEnd);
+		bakedImagery = {
+			kind: header.bakedImagery.kind,
+			width: header.bakedImagery.width,
+			height: header.bakedImagery.height,
+			mimeType: header.bakedImagery.mimeType,
+			sourceVersion: header.bakedImagery.sourceVersion,
+			resolution: header.bakedImagery.resolution,
+			dataUrl: bytesToDataUrl(imageBytes, header.bakedImagery.mimeType),
+		};
+	} else if (version >= PACK_IMAGE_FORMAT_VERSION && header.bakedHikingMap) {
 		const imageStart = trackEnd;
 		const imageEnd = imageStart + header.bakedHikingMap.byteLength;
 		if (imageEnd > data.byteLength) {
@@ -182,10 +201,12 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 		}
 
 		const imageBytes = data.slice(imageStart, imageEnd);
-		bakedHikingMap = {
+		bakedImagery = {
+			kind: "hiking-map",
 			width: header.bakedHikingMap.width,
 			height: header.bakedHikingMap.height,
 			mimeType: header.bakedHikingMap.mimeType,
+			sourceVersion: "OpenHikingMap",
 			resolution: header.bakedHikingMap.resolution,
 			dataUrl: bytesToDataUrl(imageBytes, header.bakedHikingMap.mimeType),
 		};
@@ -236,7 +257,7 @@ export function decodeTerrainPack(data: Uint8Array): TerrainPayload {
 			maxElevation: header.grid.maxElevation,
 		},
 		track,
-		bakedHikingMap,
+		bakedImagery,
 		stats: header.stats,
 	};
 }

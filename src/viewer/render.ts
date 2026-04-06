@@ -1,7 +1,8 @@
 import type * as ThreeType from "three";
 import { THREE_JS_VERSION } from "../constants.ts";
 import { OPEN_HIKING_ATTRIBUTION, OPEN_HIKING_FALLBACK } from "../hikingMap.ts";
-import type { TerrainPayload } from "../types.ts";
+import type { BakedImagery, TerrainPayload } from "../types.ts";
+import { WORLDCOVER_ATTRIBUTION, WORLDCOVER_FALLBACK } from "../worldcover.ts";
 import { bindKeyboardControls } from "./controls.ts";
 import { escapeText } from "./dom.ts";
 import { renderViewerShell } from "./layout.ts";
@@ -105,9 +106,9 @@ export async function renderTerrainViewer(
 	let loadedTexture: ThreeType.Texture | null = null;
 	let disposed = false;
 
-	if (activeTheme.useHikingMap) {
-		if (payload.bakedHikingMap) {
-			loadPackedTexture(THREE, renderer, payload.bakedHikingMap.dataUrl)
+	if (activeTheme.imageryKind) {
+		if (payload.bakedImagery?.kind === activeTheme.imageryKind) {
+			loadPackedTexture(THREE, renderer, payload.bakedImagery)
 				.then((texture) => {
 					if (disposed) {
 						texture.dispose();
@@ -117,14 +118,20 @@ export async function renderTerrainViewer(
 					loadedTexture?.dispose();
 					loadedTexture = texture;
 					terrainLayer.applyBakedTexture(texture);
-					styleAttribution.innerHTML = `${OPEN_HIKING_ATTRIBUTION} <span>Baked ${escapeText(payload.bakedHikingMap?.resolution ?? "standard")} texture.</span>`;
+					styleAttribution.innerHTML = buildImageryAttribution(
+						payload.bakedImagery,
+					);
 				})
 				.catch((error) => {
 					console.warn(error);
-					styleAttribution.textContent = OPEN_HIKING_FALLBACK;
+					styleAttribution.textContent = fallbackImageryMessage(
+						activeTheme.imageryKind,
+					);
 				});
 		} else {
-			styleAttribution.textContent = OPEN_HIKING_FALLBACK;
+			styleAttribution.textContent = fallbackImageryMessage(
+				activeTheme.imageryKind,
+			);
 		}
 	}
 
@@ -162,15 +169,34 @@ export async function renderTerrainViewer(
 function loadPackedTexture(
 	THREE: typeof ThreeType,
 	renderer: ThreeType.WebGLRenderer,
-	dataUrl: string,
+	imagery: BakedImagery,
 ): Promise<ThreeType.Texture> {
 	const loader = new THREE.TextureLoader();
-	return loader.loadAsync(dataUrl).then((texture) => {
+	return loader.loadAsync(imagery.dataUrl).then((texture) => {
 		texture.colorSpace = THREE.SRGBColorSpace;
-		texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+		if (imagery.kind === "worldcover") {
+			texture.magFilter = THREE.NearestFilter;
+			texture.minFilter = THREE.NearestFilter;
+			texture.generateMipmaps = false;
+			texture.anisotropy = 1;
+		} else {
+			texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+		}
 		texture.wrapS = THREE.ClampToEdgeWrapping;
 		texture.wrapT = THREE.ClampToEdgeWrapping;
 		texture.needsUpdate = true;
 		return texture;
 	});
+}
+
+function buildImageryAttribution(imagery: BakedImagery): string {
+	if (imagery.kind === "worldcover") {
+		return `${WORLDCOVER_ATTRIBUTION} <span>Baked ${escapeText(imagery.sourceVersion)} texture.</span>`;
+	}
+
+	return `${OPEN_HIKING_ATTRIBUTION} <span>Baked ${escapeText(imagery.resolution ?? "standard")} texture.</span>`;
+}
+
+function fallbackImageryMessage(kind: BakedImagery["kind"]): string {
+	return kind === "worldcover" ? WORLDCOVER_FALLBACK : OPEN_HIKING_FALLBACK;
 }

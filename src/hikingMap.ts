@@ -5,11 +5,7 @@ import {
 	putCachedHikingMapTile,
 } from "./cache.ts";
 import { bytesToDataUrl, dataUrlMimeType } from "./dataUrl.ts";
-import type {
-	BakedHikingMapTexture,
-	GeoBounds,
-	HikingMapResolution,
-} from "./types.ts";
+import type { BakedImagery, GeoBounds, HikingMapResolution } from "./types.ts";
 
 type HikingMapTexturePreset = {
 	label: HikingMapResolution;
@@ -59,6 +55,7 @@ export const OPEN_HIKING_ATTRIBUTION =
 	'Imagery: <a href="https://tile.openmaps.fr/" target="_blank" rel="noreferrer">OpenHikingMap</a> with <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> data.';
 export const OPEN_HIKING_FALLBACK =
 	"Baked OpenHikingMap imagery is unavailable for this pack; showing classic relief tint instead.";
+export const OPEN_HIKING_SOURCE_VERSION = "OpenHikingMap";
 
 export const HIKING_MAP_TEXTURE_PRESETS: Record<
 	HikingMapResolution,
@@ -501,7 +498,7 @@ function cropCoverageTexture(
 export async function bakeHikingMapTexture(
 	bounds: GeoBounds,
 	resolution: HikingMapResolution,
-): Promise<BakedHikingMapTexture | null> {
+): Promise<BakedImagery | null> {
 	if (!hasRasterSupport()) {
 		return null;
 	}
@@ -521,9 +518,11 @@ export async function bakeHikingMapTexture(
 
 	const encodedTexture = await encodeEmbeddedTexture(outputCanvas);
 	return {
+		kind: "hiking-map",
 		width: encodedTexture.width,
 		height: encodedTexture.height,
 		mimeType: encodedTexture.mimeType,
+		sourceVersion: OPEN_HIKING_SOURCE_VERSION,
 		resolution: preset.label,
 		dataUrl: encodedTexture.dataUrl,
 	};

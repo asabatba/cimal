@@ -18,6 +18,7 @@ import type {
 	SampledTile,
 	TerrainCacheIndex,
 	TerrainCacheIndexEntry,
+	ViewerStyle,
 } from "./types.ts";
 
 const encoder = new TextEncoder();
@@ -539,11 +540,13 @@ export function buildTileSampleCacheKey(
 export function buildCimalPackCacheKey(
 	source: string,
 	xml: string,
+	style: ViewerStyle,
 	hikingMapResolution: HikingMapResolution,
 ): string {
 	return [
 		`v${CIMAL_PACK_CACHE_VERSION}`,
 		source,
+		style,
 		hikingMapResolution,
 		djb2Hash(xml),
 	].join("|");

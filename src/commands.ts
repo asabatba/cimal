@@ -8,6 +8,7 @@ import {
 	normalizeGpxSource,
 	normalizeHikingMapResolution,
 	normalizePackPath,
+	normalizeViewerStyle,
 } from "./input.ts";
 import { encodeTerrainPack } from "./pack.ts";
 import { buildTerrainPayload } from "./terrain.ts";
@@ -54,6 +55,14 @@ export async function buildCimalPackFromGpx(): Promise<void> {
 	}
 
 	const outputPath = normalizePackPath(outputResponse);
+	const styleResponse = await editor.prompt(
+		"Viewer style for this pack",
+		"hiking-map",
+	);
+	if (!styleResponse) {
+		return;
+	}
+	const style = normalizeViewerStyle(styleResponse);
 	const resolutionResponse = await editor.prompt(
 		"Baked hiking-map resolution",
 		DEFAULT_HIKING_MAP_RESOLUTION,
@@ -63,7 +72,10 @@ export async function buildCimalPackFromGpx(): Promise<void> {
 	}
 
 	const hikingMapResolution = normalizeHikingMapResolution(resolutionResponse);
-	const payload = await buildTerrainPayload(gpxSource, { hikingMapResolution });
+	const payload = await buildTerrainPayload(gpxSource, {
+		style,
+		hikingMapResolution,
+	});
 	const packed = encodeTerrainPack(payload);
 	await space.writeFile(outputPath, packed);
 	await editor.flashNotification(`Built ${outputPath}.`);
